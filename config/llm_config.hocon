@@ -1,0 +1,10 @@
+# LLMWiki — LLM Configuration
+# Uses AWS Bedrock with Claude Sonnet 4.6 (same model as all other LLMWiki Lambdas)
+# AWS credentials are picked up from the ECS task role / local profile automatically.
+
+{
+    "llm_config": {
+        "class": "bedrock",
+        "model_name": "us.anthropic.claude-sonnet-4-6-v1:0",
+    }
+}

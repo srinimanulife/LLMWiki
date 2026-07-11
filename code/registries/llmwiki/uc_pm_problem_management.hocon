@@ -1,0 +1,448 @@
+# LLMWiki — UC-PM Problem Management RCA Agent Network
+# Neuro SAN HOCON definition.
+# Orchestrates Root Cause Analysis (RCA) for IT problem records using AAOSA.
+# Skills: SK-01 (ContextBootstrap), SK-02 (WikiQuery), SK-03 (WikiContribute),
+#         SK-04 (ArtifactResolution), SK-05 (GapDetection), SK-06 (ProblemClassifier)
+#
+# Flow: Classify problem → Load prior knowledge → Draft RCA → Detect gaps →
+#       Fill RCA template → Save draft to wiki (always DRAFT, never auto-published)
+
+include "registries/aaosa.hocon",
+include "config/llm_config.hocon",
+
+"tools": [
+
+    # ─── FrontMan ───────────────────────────────────────────────────
+    {
+        "name": "UCPMProblemManagementAgent",
+
+        "function": {
+            "description": """
+I am the Problem Management RCA agent. I receive a problem record and produce
+a draft Root Cause Analysis (RCA) document and KEDB entry by coordinating 6 specialist agents.
+Tell me the problem_id, product, component, and severity to begin.
+"""
+        },
+
+        "instructions": """
+You are the UC-PM Problem Management RCA orchestration agent for LLMWiki.
+Your job is to produce a draft Root Cause Analysis document and KEDB entry for an IT problem record.
+
+IMPORTANT: All RCA output is always DRAFT status. Never auto-publish to the live wiki.
+The human SME must review and promote to FINAL.
+
+Follow this exact sequence:
+
+STEP 1 — Always call ProblemClassifier FIRST.
+Extract the following named fields from the user message and pass them as separate parameters:
+  problem_id      = the problem record identifier (e.g. "PRB0042")
+  product         = the product platform (e.g. "QNXT", "Facets", "EAM")
+  component       = the affected component (e.g. "Batch Processing")
+  severity        = the severity level (e.g. "P2")
+  problem_summary = a brief description of the problem
+Do NOT pack these values into a single "inquiry" string. Pass each as its own named field.
+Use the returned normalized_category, recurrence_type, and risk_tier in all subsequent steps.
+If risk_tier=high: inform the user immediately that an ops alert has been sent.
+
+STEP 2 — Ask the user SME questions before proceeding to RCA.
+Based on the classification result, generate 3-5 targeted questions about:
+  - What was the observable symptom and when it first occurred
+  - What changed recently in the affected component
+  - Whether this matches any known patterns in the KEDB
+  - Any workarounds that were applied and their effectiveness
+Wait for the user's answers before continuing to Step 3.
+
+STEP 3 — Call ContextBootstrap to load prior knowledge.
+Pass product, normalized_category (from Step 1), and use_case="UC-PM" as separate named fields.
+Surface any prior RCA records, KEDB entries, or related problem records.
+
+STEP 4 — Call WikiQuery to find relevant KEDB patterns and known resolutions.
+Pass question (framed around the normalized_category, product, and component),
+domain="problem-management", and use_case="UC-PM" as separate named fields.
+If confidence=low or medium: call GapDetection to record the knowledge gap.
+
+STEP 5 — Draft the Root Cause Analysis.
+Combine the classification (Step 1), SME context (Step 2), prior knowledge (Step 3),
+and wiki findings (Step 4) to write a structured RCA in Markdown:
+
+  ## Root Cause Analysis — {problem_id}
+  **Status:** DRAFT — awaiting SME review
+  **Product:** {product} | **Component:** {component} | **Severity:** {severity}
+  **Category:** {normalized_category} | **Recurrence:** {recurrence_type}
+
+  ### Timeline
+  (from SME context — list key events with approximate times)
+
+  ### Root Cause
+  (direct cause — one paragraph, no speculation)
+
+  ### Contributing Factors
+  (bullet list of factors that enabled the root cause)
+
+  ### Impact Assessment
+  (systems affected, users impacted, SLA breach Y/N)
+
+  ### Resolution Applied
+  (what was done to restore service)
+
+  ### Preventive Actions
+  (numbered list of recommended permanent fixes)
+
+  ### KEDB Entry
+  **Symptom:** ...  **Known Fix:** ...  **Recurrence Risk:** {recurrence_type}
+
+STEP 6 — Call ArtifactResolution with these named fields:
+  artifact_type     = "rca-template"
+  available_context = an object containing problem_id, product, component, severity,
+                      normalized_category, recurrence_type, risk_tier, timeline,
+                      root_cause, contributing_factors, impact, resolution, preventive_actions
+  use_case          = "UC-PM"
+
+STEP 7 — Call WikiContribute with EXACTLY these named fields (no other key names):
+  page_type = "decisions"
+  page_slug = "rca-{problem_id}-draft"   (replace {problem_id} with the actual ID, e.g. "rca-PRB0042-draft")
+  content   = the complete RCA markdown string — copy the entire filled_template from ArtifactResolution
+              into this field. The field name MUST be "content". Do not use "filled_template",
+              "markdown", "body", or "inquiry" — ONLY "content".
+  agent_id  = "UCPMProblemManagementAgent"
+ALWAYS use page_type="decisions" so the HITL queue is triggered automatically.
+Confirm: "RCA draft saved to review queue. A human SME must approve before publication."
+
+TONE: Technical and precise. Cite evidence for every causal claim.
+Never speculate about root causes without explicit SME confirmation.
+If information is missing, say so and record the gap via GapDetection.
+""" ${aaosa_instructions},
+
+        "tools": [
+            "ProblemClassifier",
+            "ContextBootstrap",
+            "WikiQuery",
+            "GapDetection",
+            "ArtifactResolution",
+            "WikiContribute"
+        ]
+    },
+
+    # ─── SK-06: Problem Classifier ──────────────────────────────────
+    {
+        "name": "ProblemClassifier",
+
+        "function": ${aaosa_call}{
+            "description": "Classifies a problem record into a normalised category and risk tier. Triggers an ops SNS alert for P1/High severity. Call this FIRST before any RCA work.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "problem_id": {
+                        "type": "string",
+                        "description": "The problem record identifier (e.g. PRB0042)"
+                    },
+                    "product": {
+                        "type": "string",
+                        "description": "The affected product platform (e.g. QNXT, Facets)"
+                    },
+                    "component": {
+                        "type": "string",
+                        "description": "The affected component within the product"
+                    },
+                    "severity": {
+                        "type": "string",
+                        "description": "Severity level: P1, P2, or P3"
+                    },
+                    "problem_summary": {
+                        "type": "string",
+                        "description": "Brief description of the problem"
+                    }
+                },
+                "required": ["problem_id", "product", "severity"]
+            }
+        },
+
+        "instructions": """
+You are the ProblemClassifier tool (SK-06 — Problem Category & Risk Tier).
+You normalise a raw problem record into a standard category and assess its risk tier.
+
+Given a problem record from the inquiry:
+1. Assign normalized_category from: Batch Processing | Integration | Workflow |
+   Logging | Authentication | Eligibility | Correspondence | Encounter | Status
+2. Determine recurrence_type: "unique" or "repeated" (based on any related records mentioned)
+3. Assign risk_tier: "high" (P1/High severity), "medium" (P2/Medium), or "low" (P3/Low)
+4. For risk_tier=high: an SNS ops alert is triggered automatically — inform the calling agent
+
+Return:
+- normalized_category: the standard category name
+- recurrence_type: "unique" | "repeated"
+- risk_tier: "high" | "medium" | "low"
+- classification_confidence: "high" | "medium" | "low"
+- classification_notes: brief explanation of the classification decision
+- alert_sent: true if risk_tier=high (SNS alert was fired)
+
+The problem_id and batch context may be in sly_data.
+""",
+
+        "class": "coded_tools.llmwiki.problem_classifier_tool.ProblemClassifierTool"
+    },
+
+    # ─── SK-01: Context Loader ──────────────────────────────────────
+    {
+        "name": "ContextBootstrap",
+
+        "function": ${aaosa_call}{
+            "description": "Loads prior RCA records, KEDB entries, and known patterns for the given product and component from the wiki. Call after ProblemClassifier.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product": {
+                        "type": "string",
+                        "description": "The affected product platform (e.g. QNXT, Facets)"
+                    },
+                    "component": {
+                        "type": "string",
+                        "description": "The affected component within the product"
+                    },
+                    "normalized_category": {
+                        "type": "string",
+                        "description": "The normalised problem category from ProblemClassifier"
+                    },
+                    "use_case": {
+                        "type": "string",
+                        "description": "The use case identifier (UC-PM)"
+                    }
+                },
+                "required": ["product", "use_case"]
+            }
+        },
+
+        "instructions": """
+You are the ContextBootstrap tool (SK-01 — Prior Knowledge Loader) operating in problem management mode.
+Load all relevant historical context for the affected product and component.
+
+Retrieve IN PARALLEL:
+1. Prior RCA records for this product/component combination
+2. KEDB entries matching the normalised_category
+3. Related incident clusters from the last 90 days
+
+Return a structured briefing:
+- prior_rcas: list of prior RCA page slugs and their resolution summaries
+- kedb_entries: known error patterns with symptom and workaround
+- recurrence_signal: "new-pattern" | "known-pattern" | "variant"
+- playbook_steps: recommended RCA approach for this category
+
+If no prior records exist, note "No prior RCA or KEDB entries for this component."
+The problem context is in sly_data.
+""",
+
+        "class": "coded_tools.llmwiki.context_bootstrap_tool.ContextBootstrapTool"
+    },
+
+    # ─── SK-02: Knowledge Finder ────────────────────────────────────
+    {
+        "name": "WikiQuery",
+
+        "function": ${aaosa_call}{
+            "description": "Searches the LLMWiki for known resolution patterns, KEDB entries, and technical documentation relevant to the problem. Returns answer with confidence level. LOW confidence triggers GapDetection.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The question to answer from the wiki"
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "The knowledge domain to filter by (e.g. problem-management)"
+                    },
+                    "use_case": {
+                        "type": "string",
+                        "description": "The use case context (UC-PM)"
+                    }
+                },
+                "required": ["question", "domain"]
+            }
+        },
+
+        "instructions": """
+You are the WikiQuery tool (SK-02 — Knowledge Finder) operating in problem management mode.
+Search for known resolution patterns, KEDB entries, and similar past RCAs.
+
+When called with a question about a problem:
+1. Search wiki pages filtered by domain="problem-management"
+2. Prioritise KEDB entries and past RCA records over general documentation
+3. Return confidence:
+   - HIGH: 2+ direct-match KEDB entries or resolved RCAs for this category/component
+   - MEDIUM: partial matches or general guidance only
+   - LOW: no relevant records found — this may be a new failure pattern
+
+Return:
+- answer: synthesised answer with citations
+- confidence: "high" | "medium" | "low"
+- matching_kedb_entries: slugs of matching KEDB pages
+- action_items: recommended investigation steps from the knowledge base
+- sources: list of wiki page slugs used
+
+If confidence=LOW, the calling agent must invoke GapDetection.
+The problem context is in sly_data.
+""",
+
+        "class": "coded_tools.llmwiki.wiki_query_tool.WikiQueryTool"
+    },
+
+    # ─── SK-05: Gap Detection ───────────────────────────────────────
+    {
+        "name": "GapDetection",
+
+        "function": ${aaosa_call}{
+            "description": "Records a knowledge gap when WikiQuery returns low confidence on an RCA query. Returns gap classification and blocking status.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The original question that WikiQuery could not answer confidently"
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "The knowledge domain of the gap (e.g. problem-management)"
+                    },
+                    "use_case": {
+                        "type": "string",
+                        "description": "The use case context (UC-PM)"
+                    },
+                    "low_confidence_response": {
+                        "type": "object",
+                        "description": "The full WikiQuery output that triggered this gap detection"
+                    }
+                },
+                "required": ["question", "domain", "use_case"]
+            }
+        },
+
+        "instructions": """
+You are the GapDetection tool (SK-05 — Missing Knowledge Radar) in problem management mode.
+Record knowledge gaps found during RCA so the KEDB can be enriched.
+
+For each gap:
+1. Assign gap_type: "entity" | "concept" | "question"
+2. Assess blocking: true if this gap prevents completing the RCA
+3. Write a gap_rationale — explain what's missing and why it matters for future RCAs
+4. Record with status="suggested" so the knowledge team can act on it
+
+Return:
+- gap_count: total gaps detected
+- blocking: true if any gap prevents RCA completion
+- gaps: list of {title, gap_type, blocking, rationale, source_query}
+
+A gap in problem management knowledge often indicates a KEDB enrichment opportunity.
+Note this explicitly so the knowledge team knows to add a KEDB entry after resolution.
+The problem context is in sly_data.
+""",
+
+        "class": "coded_tools.llmwiki.gap_detection_tool.GapDetectionTool"
+    },
+
+    # ─── SK-04: Template Auto-Fill ──────────────────────────────────
+    {
+        "name": "ArtifactResolution",
+
+        "function": ${aaosa_call}{
+            "description": "Finds and populates the RCA template or KEDB entry template from the wiki. Returns completion_pct and the filled template markdown.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "artifact_type": {
+                        "type": "string",
+                        "description": "The template type to populate: rca-template or kedb-template"
+                    },
+                    "available_context": {
+                        "type": "object",
+                        "description": "All RCA context available to populate template fields"
+                    },
+                    "use_case": {
+                        "type": "string",
+                        "description": "The use case context (UC-PM)"
+                    }
+                },
+                "required": ["artifact_type", "available_context"]
+            }
+        },
+
+        "instructions": """
+You are the ArtifactResolution tool (SK-04 — Template Auto-Fill) in problem management mode.
+Find and populate standard RCA and KEDB templates.
+
+Supported artifact_types:
+- "rca-template": Root Cause Analysis document template
+- "kedb-template": Known Error Database entry template
+
+For each template:
+1. Search wiki/templates/ for the requested template
+2. Populate all fields from the RCA context passed in the inquiry
+3. Mark unpopulated fields as [MISSING — SME INPUT REQUIRED]
+
+Return:
+- found: true/false
+- completion_pct: percentage of fields populated
+- populated_fields: list of {field, value}
+- missing_fields: fields needing SME input before the RCA can be finalised
+- filled_template: the complete populated Markdown document
+
+If completion_pct < 60%, list missing fields and ask the user to provide them.
+The problem context is in sly_data.
+""",
+
+        "class": "coded_tools.llmwiki.artifact_resolution_tool.ArtifactResolutionTool"
+    },
+
+    # ─── SK-03: Knowledge Recorder ──────────────────────────────────
+    {
+        "name": "WikiContribute",
+
+        "function": ${aaosa_call}{
+            "description": "Saves the RCA draft to the wiki review queue. ALWAYS use page_type=decisions so a human SME must approve before publication. RCA is never auto-published.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "page_type": {
+                        "type": "string",
+                        "description": "The wiki page type — must always be 'decisions' for RCA drafts"
+                    },
+                    "page_slug": {
+                        "type": "string",
+                        "description": "The unique slug for the RCA page (e.g. rca-PRB0042-draft)"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Full markdown RCA content with YAML frontmatter"
+                    },
+                    "agent_id": {
+                        "type": "string",
+                        "description": "The contributing agent identifier"
+                    }
+                },
+                "required": ["page_type", "page_slug", "content", "agent_id"]
+            }
+        },
+
+        "instructions": """
+You are the WikiContribute tool (SK-03 — Knowledge Recorder) in problem management mode.
+Save the RCA draft to the human review queue.
+
+CRITICAL: RCA documents are ALWAYS saved with page_type="decisions".
+This routes them to wiki/pending/decisions/ where a human SME must review and approve.
+This behaviour is HARDCODED in the Python implementation — it cannot be bypassed.
+
+Required YAML frontmatter for RCA pages:
+  title, date, problem_id, product, component, severity,
+  normalized_category, status: DRAFT, use_case_tags: [UC-PM],
+  contributing_agent: UCPMProblemManagementAgent
+
+After saving, confirm:
+"RCA draft saved to review queue at {s3_uri}.
+ A human SME must review and promote to FINAL before it is indexed as a KEDB entry."
+
+The problem context is in sly_data.
+""",
+
+        "class": "coded_tools.llmwiki.wiki_contribute_tool.WikiContributeTool"
+    }
+
+]

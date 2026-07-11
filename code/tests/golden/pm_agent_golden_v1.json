@@ -1,0 +1,251 @@
+{
+  "version": "1.0",
+  "agent": "uc-pm",
+  "function_name": "llmwiki-harness-uc-pm",
+  "description": "Problem Management agent golden cases — eval-first contract tests before production",
+  "created": "2026-07-08",
+  "cases": [
+    {
+      "case_id": "PM-G-001",
+      "name": "First invocation — pauses for SME questions",
+      "description": "A fresh problem record submission must kick off Phase 1-2 then pause at Phase 3 to gather SME context before RCA.",
+      "input": {
+        "action": "start",
+        "problem_id": "PM-EVAL-001",
+        "title": "QNXT claims adjudication failures during high-volume period",
+        "symptom_description": "30% of claims submitted between 09:00-11:00 fail with error code ADJUD-503. Workaround: manual requeue from operations team.",
+        "severity": "P2",
+        "affected_customers": ["BlueCross-MN", "Anthem-OH"],
+        "environment": "production",
+        "caller_tag": "eval-pm-golden"
+      },
+      "expected_trace": [
+        "phase1_problem_intake",
+        "phase2_classification",
+        "phase3_sme_questions_pause"
+      ],
+      "expected_output": {
+        "status": "paused",
+        "current_phase": 3
+      },
+      "contract": {
+        "status_eq": "paused",
+        "phase_eq": 3,
+        "no_500": true,
+        "fields_present": ["problem_id", "status", "current_phase", "question"],
+        "question_count_eq": 3
+      },
+      "tags": ["smoke", "phase3", "sme-questions", "new-problem"]
+    },
+    {
+      "case_id": "PM-G-002",
+      "name": "Resume with SME context — completes RCA",
+      "description": "After Phase 3 pause, providing SME answers must allow the agent to complete root cause analysis and generate a KEDB entry.",
+      "prior_state": "PM-G-001",
+      "input": {
+        "action": "resume",
+        "problem_id": "PM-EVAL-001",
+        "human_context": "Root cause traced to connection pool exhaustion in claims DB at peak load. Connection pool limit is 50; peak demand reaches 80. Config change in v3.2.1 reduced pool size without traffic review. SME owner: Raj Kumar (DB team). Known fix: increase pool to 150 + add circuit breaker. Estimated fix time: 4 hours with maintenance window.",
+        "caller_tag": "eval-pm-golden"
+      },
+      "expected_output": {
+        "status": "completed",
+        "phases_completed": 7
+      },
+      "contract": {
+        "status_eq": "completed",
+        "no_500": true,
+        "phases_completed_gte": 6,
+        "fields_present": ["problem_id", "status", "phases_completed"],
+        "report_download_url_non_empty": true
+      },
+      "tags": ["resume", "rca", "completion", "kedb"]
+    },
+    {
+      "case_id": "PM-G-003",
+      "name": "get_status — read-only, no phase execution",
+      "description": "get_status must return current state without invoking any Bedrock phases.",
+      "input": {
+        "action": "get_status",
+        "problem_id": "PM-EVAL-001",
+        "caller_tag": "eval-pm-golden"
+      },
+      "expected_output": {
+        "status": "paused_or_completed"
+      },
+      "contract": {
+        "no_500": true,
+        "fields_present": ["problem_id", "status"]
+      },
+      "tags": ["get_status", "read-only", "stateless"]
+    },
+    {
+      "case_id": "PM-G-004",
+      "name": "Missing problem_id — structured error response",
+      "description": "Omitting problem_id must return a structured error, not a 500 or unhandled exception.",
+      "input": {
+        "action": "start",
+        "title": "Missing problem_id test",
+        "caller_tag": "eval-pm-golden"
+      },
+      "expected_output": {
+        "status": "error"
+      },
+      "contract": {
+        "status_eq": "error",
+        "no_500": true,
+        "error_field_present": true,
+        "error_mentions_any": ["problem_id", "required", "missing"]
+      },
+      "tags": ["error-handling", "validation", "required-fields"]
+    },
+    {
+      "case_id": "PM-G-005",
+      "name": "Phase 2 classification assigns correct priority tier",
+      "description": "P1 severity + 2 enterprise customers + production environment must classify as CRITICAL tier.",
+      "input": {
+        "action": "start",
+        "problem_id": "PM-EVAL-005",
+        "title": "Complete outage — payment processing unavailable",
+        "symptom_description": "All payment transactions failing since 14:30. No workaround available.",
+        "severity": "P1",
+        "affected_customers": ["Aetna-National", "Cigna-Federal"],
+        "environment": "production",
+        "caller_tag": "eval-pm-golden"
+      },
+      "expected_output": {
+        "current_phase": 3,
+        "fields_include": ["classification", "priority_tier"]
+      },
+      "contract": {
+        "status_eq": "paused",
+        "no_500": true,
+        "fields_present": ["problem_id", "status", "current_phase"]
+      },
+      "tags": ["classification", "p1", "priority", "phase2"]
+    },
+    {
+      "case_id": "PM-G-006",
+      "name": "Phase 3 SME questions cover root cause, impact, workaround",
+      "description": "The 3 SME questions generated at Phase 3 must cover: root cause hypothesis, business impact scope, and existing workaround status.",
+      "input": {
+        "action": "start",
+        "problem_id": "PM-EVAL-006",
+        "title": "Batch enrollment processing delay — 6-hour SLA breach",
+        "symptom_description": "Nightly batch enrollment jobs running 4x slower than baseline for past 3 days. SLA requires completion by 06:00 but jobs finishing at 10:00.",
+        "severity": "P2",
+        "affected_customers": ["BCBS-National"],
+        "environment": "production",
+        "caller_tag": "eval-pm-golden"
+      },
+      "expected_output": {
+        "question_topics": ["root cause", "impact", "workaround"]
+      },
+      "contract": {
+        "status_eq": "paused",
+        "no_500": true,
+        "question_count_eq": 3,
+        "question_topics_cover_any": ["root cause", "cause", "impact", "workaround", "affected", "scope"]
+      },
+      "tags": ["phase3", "sme-questions", "question-quality"]
+    },
+    {
+      "case_id": "PM-G-007",
+      "name": "KEDB entry generated for known problem pattern",
+      "description": "A completed problem with clear root cause must produce a KEDB-formatted entry in the output.",
+      "input": {
+        "action": "start",
+        "problem_id": "PM-EVAL-007",
+        "title": "Authentication token expiry causing session drops",
+        "symptom_description": "Users experiencing forced logouts after exactly 4 hours. Token refresh not triggering. Affects all SSO-enabled environments.",
+        "severity": "P2",
+        "affected_customers": ["multiple"],
+        "environment": "production",
+        "caller_tag": "eval-pm-golden"
+      },
+      "expected_output": {
+        "status": "paused"
+      },
+      "contract": {
+        "status_eq": "paused",
+        "no_500": true,
+        "fields_present": ["problem_id", "status", "question"]
+      },
+      "tags": ["kedb", "known-error", "phase6"]
+    },
+    {
+      "case_id": "PM-G-008",
+      "name": "Report contains required ITIL sections",
+      "description": "After completion, the HTML report must contain: Problem Statement, Timeline, Root Cause, Impact Analysis, Resolution Steps, Prevention Measures, KEDB Reference.",
+      "prior_state": "PM-G-002",
+      "input": {
+        "action": "get_report",
+        "problem_id": "PM-EVAL-001",
+        "caller_tag": "eval-pm-golden"
+      },
+      "expected_output": {
+        "report_sections": [
+          "Problem Statement",
+          "Timeline",
+          "Root Cause",
+          "Impact Analysis",
+          "Resolution Steps",
+          "Prevention Measures",
+          "KEDB Reference"
+        ]
+      },
+      "contract": {
+        "no_500": true,
+        "fields_present": ["problem_id", "status"]
+      },
+      "tags": ["report", "html", "itil", "structure", "phase7"]
+    },
+    {
+      "case_id": "PM-G-009",
+      "name": "Phase 5 routes to correct LLMWiki domain for gap analysis",
+      "description": "For a claims processing problem, Phase 5 knowledge gap lookup must route to 'configuration' or 'data-migration' domain, not generic.",
+      "input": {
+        "action": "start",
+        "problem_id": "PM-EVAL-009",
+        "title": "QNXT configuration drift causing data mapping errors post-upgrade",
+        "symptom_description": "After v8.1 upgrade, member eligibility lookups returning stale data. Configuration tables not refreshed during cutover.",
+        "severity": "P2",
+        "affected_customers": ["HCSC"],
+        "environment": "production",
+        "caller_tag": "eval-pm-golden"
+      },
+      "expected_output": {
+        "kb_domain": "configuration"
+      },
+      "contract": {
+        "status_eq": "paused",
+        "no_500": true,
+        "fields_present": ["problem_id", "status"]
+      },
+      "tags": ["domain-routing", "phase5", "knowledge-gap", "configuration"]
+    },
+    {
+      "case_id": "PM-G-010",
+      "name": "Governance — cost row written for PM invocation",
+      "description": "Each PM harness invocation must write a usage record to llmwiki-usage DynamoDB with correct caller_tag.",
+      "input": {
+        "action": "start",
+        "problem_id": "PM-EVAL-010",
+        "title": "Governance cost tracking test",
+        "symptom_description": "Synthetic test problem for governance validation only.",
+        "severity": "P3",
+        "affected_customers": ["internal-test"],
+        "environment": "test",
+        "caller_tag": "eval-pm-golden-governance"
+      },
+      "expected_output": {
+        "governance_written": true
+      },
+      "contract": {
+        "no_500": true,
+        "fields_present": ["problem_id", "status"]
+      },
+      "tags": ["governance", "cost-tracking", "usage-log"]
+    }
+  ]
+}

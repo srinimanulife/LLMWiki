@@ -1,0 +1,2 @@
+FROM 392568849512.dkr.ecr.us-east-1.amazonaws.com/llmwiki-streamlit:latest
+COPY pages/harness_demo.py /app/pages/harness_demo.py

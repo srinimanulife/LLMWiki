@@ -1,0 +1,69 @@
+# LLMWiki Agent Network Manifest
+# Lists all UC agent networks registered with Neuro SAN.
+# Run: ns run registries/llmwiki/manifest.hocon
+# nsflow UI: http://localhost:4173
+
+{
+    "agent_networks": [
+        {
+            "name":    "uc1-sales-to-service",
+            "file":    "registries/llmwiki/uc1_sales_to_service.hocon",
+            "enabled": true,
+            "description": "UC1 Sales-to-Service handoff agent"
+        },
+        {
+            "name":    "uc2-environment-provision",
+            "file":    "registries/llmwiki/uc2_environment_provision.hocon",
+            "enabled": false,
+            "description": "UC2 Environment Provisioning (Phase 3)"
+        },
+        {
+            "name":    "uc3-iam-onboarding",
+            "file":    "registries/llmwiki/uc3_iam_onboarding.hocon",
+            "enabled": false,
+            "description": "UC3 IAM Onboarding (Phase 3)"
+        },
+        {
+            "name":    "uc4-business-config",
+            "file":    "registries/llmwiki/uc4_business_config.hocon",
+            "enabled": false,
+            "description": "UC4 Business Configuration (Phase 3)"
+        },
+        {
+            "name":    "uc5-data-migration",
+            "file":    "registries/llmwiki/uc5_data_migration.hocon",
+            "enabled": false,
+            "description": "UC5 Data Migration (Phase 3)"
+        },
+        {
+            "name":    "uc6-sit",
+            "file":    "registries/llmwiki/uc6_sit.hocon",
+            "enabled": false,
+            "description": "UC6 System Integration Testing (Phase 3)"
+        },
+        {
+            "name":    "uc7-e2e-testing",
+            "file":    "registries/llmwiki/uc7_e2e_testing.hocon",
+            "enabled": false,
+            "description": "UC7 End-to-End Testing (Phase 3)"
+        },
+        {
+            "name":    "uc8-cutover",
+            "file":    "registries/llmwiki/uc8_cutover.hocon",
+            "enabled": false,
+            "description": "UC8 Cutover (Phase 3)"
+        },
+        {
+            "name":    "uc9-pto-handover",
+            "file":    "registries/llmwiki/uc9_pto_handover.hocon",
+            "enabled": false,
+            "description": "UC9 PTO / Handover (Phase 3)"
+        },
+        {
+            "name":    "uc10-hypercare",
+            "file":    "registries/llmwiki/uc10_hypercare.hocon",
+            "enabled": false,
+            "description": "UC10 Hypercare (Phase 3)"
+        }
+    ]
+}

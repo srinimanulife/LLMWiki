@@ -1,0 +1,12 @@
+# LLMWiki Agent Network Manifest
+# Keys are file paths relative to the registries root (with .hocon extension).
+# Values: true = serve publicly, false = disabled.
+# Network name seen by clients = path without extension, e.g. "uc1_sales_to_service"
+#
+# Run: ns run registries/llmwiki/manifest.hocon
+# nsflow UI: http://localhost:4173
+
+{
+    "uc1_sales_to_service.hocon": true,
+    "uc_pm_problem_management.hocon": true
+}

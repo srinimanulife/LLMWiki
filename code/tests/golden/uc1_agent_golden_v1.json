@@ -1,0 +1,246 @@
+{
+  "version": "v1",
+  "created": "2026-07-08",
+  "description": "UC1 Sales-to-Service agent golden cases. Reference traces for eval-first validation. Each case defines the contract the harness MUST satisfy before AgentCore wires UC1.",
+  "cases": [
+    {
+      "case_id": "UC1-G-001",
+      "name": "New customer — first invocation pauses at Phase 3",
+      "description": "Brand-new customer with no wiki history. Harness must run Phase 1 + 2, then pause asking for sales team input.",
+      "input": {
+        "customer_id": "bcbs-mn-001",
+        "customer_name": "BlueCross BlueShield Minnesota",
+        "product": "TriZetto QNXT",
+        "sow_reference": "SOW-2026-BCBS-MN-001"
+      },
+      "expected_trace": [
+        {"step": 1, "action": "customer_wiki_lookup",      "required": true},
+        {"step": 2, "action": "engagement_classification", "required": true},
+        {"step": 3, "action": "human_input_pause",         "required": true}
+      ],
+      "expected_output": {
+        "status": "paused",
+        "current_phase": 3,
+        "question_present": true,
+        "question_count": 3
+      },
+      "contract": {
+        "status_eq": "paused",
+        "phase_eq": 3,
+        "fields_present": ["question", "current_phase", "status"],
+        "question_mentions_any": ["executive sponsor", "go-live", "timeline", "prior"]
+      },
+      "tags": ["new-customer", "pause-resume", "phase3"]
+    },
+    {
+      "case_id": "UC1-G-002",
+      "name": "Resume with human context — completes all 8 phases",
+      "description": "After Phase 3 pause, sales team provides context. Harness must resume and complete all remaining phases.",
+      "input": {
+        "customer_id": "bcbs-mn-001",
+        "customer_name": "BlueCross BlueShield Minnesota",
+        "product": "TriZetto QNXT",
+        "sow_reference": "SOW-2026-BCBS-MN-001",
+        "human_context": "Executive sponsor is Jane Smith, CMO. Go-live Q1 2027. No prior attempts. HIPAA required. EHR is Epic. Contract penalty clause if missed by >30 days."
+      },
+      "prior_state": {
+        "phase1": {"customer_status": "new", "pages_found": 0, "key_facts": [], "overview": "New customer — no prior history"},
+        "phase2": {"risk_tier": "HIGH", "go_live_urgency": "MEDIUM", "implementation_complexity": "HIGH", "rationale": "New customer with no history defaults to HIGH risk", "customer_type": "payer", "products": ["TriZetto QNXT"]}
+      },
+      "expected_trace": [
+        {"step": 4, "action": "load_delivery_playbook",   "required": false},
+        {"step": 5, "action": "risk_analysis",            "required": true},
+        {"step": 6, "action": "gap_detection",            "required": false},
+        {"step": 7, "action": "template_population",      "required": false},
+        {"step": 8, "action": "write_handoff_report",     "required": true}
+      ],
+      "expected_output": {
+        "status": "completed",
+        "phases_completed": 8,
+        "report_present": true,
+        "wiki_page_written": true
+      },
+      "contract": {
+        "status_eq": "completed",
+        "fields_present": ["phases_completed", "report_download_url"],
+        "report_download_url_non_empty": true,
+        "phases_completed_gte": 7
+      },
+      "tags": ["resume", "completion", "all-phases"]
+    },
+    {
+      "case_id": "UC1-G-003",
+      "name": "get_status returns current run state",
+      "description": "action=get_status must return the latest run record without triggering any phases.",
+      "input": {
+        "action": "get_status",
+        "engagement_id": "bcbs-mn-001"
+      },
+      "expected_output": {
+        "status_in": ["completed", "paused", "running", "error"],
+        "no_phase_execution": true
+      },
+      "contract": {
+        "fields_present": ["status", "current_phase"],
+        "no_lambda_invocations": true
+      },
+      "tags": ["status", "read-only"]
+    },
+    {
+      "case_id": "UC1-G-004",
+      "name": "Missing customer_id returns structured error",
+      "description": "Harness must validate inputs and return a clear error — never 500.",
+      "input": {},
+      "expected_output": {
+        "status": "error",
+        "error_mentions": "customer_id"
+      },
+      "contract": {
+        "status_eq": "error",
+        "no_500": true,
+        "error_field_present": true,
+        "error_mentions_any": ["customer_id", "required"]
+      },
+      "tags": ["validation", "error-handling"]
+    },
+    {
+      "case_id": "UC1-G-005",
+      "name": "Phase 2 classification returns required fields",
+      "description": "Engagement classification (Phase 2) must always return all 6 required JSON fields.",
+      "input": {
+        "customer_id": "test-payer-001",
+        "customer_name": "Test Payer Corp",
+        "product": "TriZetto Facets",
+        "sow_reference": "SOW-TEST-001"
+      },
+      "expected_phase2": {
+        "fields_required": ["customer_type", "products", "risk_tier", "go_live_urgency", "implementation_complexity", "rationale"],
+        "customer_type_in": ["payer", "provider", "pharmacy", "government"],
+        "risk_tier_in": ["HIGH", "MEDIUM", "LOW"],
+        "go_live_urgency_in": ["HIGH", "MEDIUM", "LOW"],
+        "implementation_complexity_in": ["HIGH", "MEDIUM", "LOW"]
+      },
+      "contract": {
+        "phase2_all_fields_present": true,
+        "phase2_enums_valid": true
+      },
+      "tags": ["phase2", "classification", "schema"]
+    },
+    {
+      "case_id": "UC1-G-006",
+      "name": "New customer defaults to HIGH risk tier",
+      "description": "When Phase 1 returns pages_found=0 (unknown customer), Phase 2 MUST classify risk_tier as HIGH.",
+      "input": {
+        "customer_id": "brand-new-customer-xyz",
+        "customer_name": "XYZ HealthCare LLC",
+        "product": "TriZetto QNXT",
+        "sow_reference": "SOW-XYZ-001"
+      },
+      "expected_phase2_constraint": {
+        "when_pages_found_zero": {
+          "risk_tier": "HIGH"
+        }
+      },
+      "contract": {
+        "when_pages_found_0_risk_tier_eq": "HIGH"
+      },
+      "tags": ["new-customer", "risk-tier", "business-rule"]
+    },
+    {
+      "case_id": "UC1-G-007",
+      "name": "Phase 3 generates exactly 3 questions",
+      "description": "Human input pause must always produce exactly 3 targeted questions — never 2, never 4.",
+      "input": {
+        "customer_id": "test-payer-002",
+        "customer_name": "Test Payer Two",
+        "product": "TriZetto QNXT",
+        "sow_reference": "SOW-TEST-002"
+      },
+      "contract": {
+        "status_eq": "paused",
+        "question_count_eq": 3,
+        "question_topics_cover_any": [
+          "executive sponsor",
+          "go-live",
+          "decision authority",
+          "timeline",
+          "penalty"
+        ]
+      },
+      "tags": ["phase3", "human-input", "question-generation"]
+    },
+    {
+      "case_id": "UC1-G-008",
+      "name": "HTML report contains all 7 required sections",
+      "description": "The generated handoff report must contain all required section headings and KPI data.",
+      "input": {
+        "customer_id": "report-test-001",
+        "customer_name": "Report Test Corp",
+        "product": "TriZetto Facets",
+        "sow_reference": "SOW-REPORT-001",
+        "human_context": "Sponsor: CEO. Go-live Q2 2027. No constraints."
+      },
+      "expected_report": {
+        "sections_required": [
+          "Customer Overview",
+          "Engagement Classification",
+          "Sales Team Context",
+          "Delivery Playbook",
+          "Risk Analysis",
+          "Knowledge Gaps",
+          "Persona Template"
+        ],
+        "kpi_badges_required": ["Risk Tier", "Go-Live Urgency"],
+        "is_valid_html": true
+      },
+      "contract": {
+        "html_contains_all_sections": true,
+        "kpi_row_present": true
+      },
+      "tags": ["phase8", "report", "html-structure"]
+    },
+    {
+      "case_id": "UC1-G-009",
+      "name": "Phase 5 risk analysis domain routes to customer-onboarding",
+      "description": "SK-02 wiki query in Phase 5 must use domain=customer-onboarding, not a generic domain.",
+      "input": {
+        "customer_id": "domain-routing-test",
+        "customer_name": "Domain Test Corp",
+        "product": "TriZetto QNXT",
+        "sow_reference": "SOW-DOM-001",
+        "human_context": "Test context for domain routing."
+      },
+      "expected_sk02_call": {
+        "domain": "customer-onboarding",
+        "question_contains_any": ["risks", "delivery", "implementation", "success factors"]
+      },
+      "contract": {
+        "sk02_domain_eq": "customer-onboarding",
+        "sk02_question_non_empty": true
+      },
+      "tags": ["phase5", "domain-routing", "sk02"]
+    },
+    {
+      "case_id": "UC1-G-010",
+      "name": "Governance cost row written for completed run",
+      "description": "After completion, at least one usage row must appear in llmwiki-usage attributed to uc1-harness caller.",
+      "input": {
+        "customer_id": "governance-test-001",
+        "customer_name": "Governance Test Corp",
+        "product": "TriZetto Facets",
+        "sow_reference": "SOW-GOV-001",
+        "human_context": "Sponsor: CFO. Go-live Dec 2026."
+      },
+      "expected_governance": {
+        "usage_rows_gte": 1,
+        "caller": "uc1-harness",
+        "cost_usd_gte": 0.001
+      },
+      "contract": {
+        "governance_usage_recorded": true,
+        "cost_usd_positive": true
+      },
+      "tags": ["governance", "cost-tracking", "integration"]
+    }
+  ]
+}

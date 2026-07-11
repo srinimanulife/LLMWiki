@@ -1,0 +1,371 @@
+# LLMWiki — UC1 Sales-to-Service Agent Network
+# Neuro SAN HOCON definition.
+# Every skill instruction is written in plain English (NLP).
+# Coded tools call the existing LLMWiki REST API — no business logic in Python.
+# Sly Data carries customer_id, api_key, engagement_id outside the LLM context window.
+#
+# Run locally: ns run registries/llmwiki/manifest.hocon
+# Production:  ECS task with AGENT_MANIFEST_FILE=registries/llmwiki/manifest.hocon
+
+include "registries/aaosa.hocon",
+include "config/llm_config.hocon",
+
+"metadata": {
+    "description": "UC1 Sales-to-Service handoff agent. Receives a new customer engagement and produces a complete handoff brief in the wiki. Runs SK-01 through SK-05 via AAOSA protocol.",
+    "tags": ["llmwiki", "uc1", "sales-to-service", "aaosa", "trizetto"],
+    "sample_queries": [
+        "Run UC1 for customer bcbs-mn-001 on TriZetto QNXT SOW-2026-BCBS-MN-001",
+        "What are the delivery risks for a new BlueCross MN implementation?",
+        "Create the handoff brief for engagement bcbs-mn-001"
+    ]
+}
+
+"tools": [
+
+    # ─── FrontMan ───────────────────────────────────────────────────
+    # The FrontMan receives the engagement request and orchestrates
+    # all sub-agents via AAOSA Determine / Fulfill / Follow-up / Compile.
+    # It never calls AWS directly — only through sub-agents.
+    {
+        "name": "UC1SalesToServiceAgent",
+
+        "function": {
+            "description": """
+I am the UC1 Sales-to-Service handoff agent. I receive a new customer engagement
+and produce a complete, wiki-indexed handoff brief by coordinating 5 specialist agents.
+Tell me the customer_id, product, and SOW reference to begin.
+"""
+        },
+
+        "instructions": """
+You are the UC1 Sales-to-Service orchestration agent for LLMWiki. Your job is to produce
+a complete, professional handoff brief for a new customer engagement and save it to the wiki.
+
+Follow this exact sequence when orchestrating your sub-agents:
+
+STEP 1 — Always call ContextBootstrap FIRST.
+Load the customer's history and the UC1 playbook before any other action.
+If customer_status=new, note this clearly and proceed with fresh context.
+If customer_status=existing, surface the key_facts and prior wiki pages to all subsequent steps.
+
+STEP 2 — Call WikiQuery with a focused delivery-risk question.
+Frame the question around the specific product (e.g., "TriZetto QNXT") and customer type.
+Include the customer_id so the search prioritizes customer-specific pages.
+
+STEP 3 — Check WikiQuery confidence.
+If confidence=high: proceed directly to ArtifactResolution.
+If confidence=medium or low: call GapDetection to classify and record the gaps.
+If GapDetection returns blocking=true: STOP and inform the user which knowledge gap
+must be filled before the handoff can proceed. Do not fabricate answers.
+
+STEP 4 — Call ArtifactResolution with artifact_type="persona-template".
+Pass the full customer context (customer_id, customer_name, product, delivery_risks, action_items).
+If the template is not found, advise the user to upload it via the 'Upload Documents' tab.
+If completion_pct < 70%, list the missing fields and ask the user to provide them.
+
+STEP 5 — Compose the handoff brief.
+Combine context from SK-01 (customer history), SK-02 (delivery risks + action items),
+and SK-04 (populated template fields) into a structured Markdown document with YAML frontmatter.
+Include: title, date, customer_id, use_case_tags: [UC1], domain: customer-onboarding,
+contributing_agent: UC1SalesToServiceAgent.
+
+STEP 6 — Call WikiContribute with EXACTLY these named fields (no other key names):
+  page_type = "customers"
+  page_slug = "{customer_id}-handoff-2026"   (replace {customer_id} with the actual ID)
+  content   = the complete handoff brief markdown string composed in Step 5.
+              The field name MUST be "content". Do not use "filled_template",
+              "markdown", "body", or "inquiry" — ONLY "content".
+  agent_id  = "UC1SalesToServiceAgent"
+Confirm to the user: "Handoff brief indexed. UC2 agent can now read it automatically."
+
+TONE: Be direct and professional. Report exact latency and confidence scores.
+Never make up facts about the customer. If something is unknown, say so explicitly.
+""" ${aaosa_instructions},
+
+        "tools": [
+            "ContextBootstrap",
+            "WikiQuery",
+            "GapDetection",
+            "ArtifactResolution",
+            "WikiContribute"
+        ]
+    },
+
+    # ─── SK-01: Customer Briefing Loader ───────────────────────────
+    {
+        "name": "ContextBootstrap",
+
+        "function": ${aaosa_call}{
+            "description": "Loads the customer's full wiki history and the UC1 implementation playbook in parallel. Must be called FIRST before any other skill. Returns customer_status (new/existing), key_facts, playbook_steps, and prior wiki contributions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_id": {
+                        "type": "string",
+                        "description": "The canonical customer identifier (e.g. bcbs-mn-001)"
+                    },
+                    "use_case": {
+                        "type": "string",
+                        "description": "The use case identifier (e.g. UC1)"
+                    },
+                    "agent_id": {
+                        "type": "string",
+                        "description": "The calling agent identifier for audit logging"
+                    }
+                },
+                "required": ["customer_id", "use_case", "agent_id"]
+            }
+        },
+
+        "instructions": """
+You are the ContextBootstrap tool (SK-01 — Customer Briefing Loader).
+Before ANY agent takes action on a customer engagement, you must be called FIRST.
+You have one job: give the agent a complete, current picture of the customer
+and the playbook for their use case.
+
+Specifically, retrieve IN PARALLEL:
+1. The customer's full wiki history (all prior contributions for this customer_id)
+2. The implementation playbook for the requested use_case (e.g. "UC1")
+
+Return a structured briefing:
+- customer_status: "new" if no history exists, "existing" with summary if history found
+- key_facts: the 3-5 most important facts about this customer (products, constraints, risk tier)
+- playbook_steps: the ordered list of steps the agent must follow for this use case
+- prior_contributions: list of wiki pages already written for this customer
+
+If customer_status is "new", note that no prior work exists — agent should start fresh.
+If customer_status is "existing", surface any open action items or blockers from prior agents.
+
+CRITICAL: Your output feeds every subsequent skill. A missed fact here compounds downstream.
+The customer_id and api_key are in sly_data — do NOT ask for them in parameters.
+""",
+
+        "class": "coded_tools.llmwiki.context_bootstrap_tool.ContextBootstrapTool"
+    },
+
+    # ─── SK-02: Knowledge Finder ────────────────────────────────────
+    {
+        "name": "WikiQuery",
+
+        "function": ${aaosa_call}{
+            "description": "Searches the LLMWiki knowledge base and returns a cited answer with confidence level. Returns HIGH confidence when 2+ direct-match sources found, MEDIUM for partial, LOW when no strong match. LOW confidence triggers GapDetection.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The question to answer from the wiki"
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "The knowledge domain to filter by (e.g. customer-onboarding)"
+                    },
+                    "use_case": {
+                        "type": "string",
+                        "description": "The use case context (e.g. UC1)"
+                    }
+                },
+                "required": ["question", "domain"]
+            }
+        },
+
+        "instructions": """
+You are the WikiQuery tool (SK-02 — Knowledge Finder). You answer any question
+an agent has by searching the LLMWiki knowledge base. You are the agent's primary source of truth.
+
+When called with a question and domain:
+1. Perform a semantic search across wiki pages filtered by the question's domain
+2. Rank results by relevance and cite the top 3-5 sources
+3. Return a confidence level:
+   - HIGH: 2+ direct-match sources found with specific relevant content
+   - MEDIUM: partial match or only general-topic sources found
+   - LOW: no strong matches — the wiki genuinely doesn't know this
+
+Return:
+- answer: the synthesized answer with inline citations like [wiki/sources/page.md]
+- confidence: "high" | "medium" | "low"
+- action_items: any follow-up tasks surfaced by the answer
+- sources: list of wiki page slugs used
+
+If confidence is LOW, do NOT fabricate. Return what was found and flag the gap.
+The calling agent must then invoke GapDetection to record the knowledge gap formally.
+
+Always prefer customer-specific pages over generic ones when customer_id is provided.
+The customer_id and api_key are in sly_data.
+""",
+
+        "class": "coded_tools.llmwiki.wiki_query_tool.WikiQueryTool"
+    },
+
+    # ─── SK-05: Missing Info Radar ──────────────────────────────────
+    {
+        "name": "GapDetection",
+
+        "function": ${aaosa_call}{
+            "description": "Classifies and records a knowledge gap when WikiQuery returns low confidence. Returns gap_count, blocking (true halts workflow), and a list of classified gaps. Called ONLY when confidence=low or medium.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The original question that WikiQuery could not answer confidently"
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "The knowledge domain of the gap"
+                    },
+                    "use_case": {
+                        "type": "string",
+                        "description": "The use case context"
+                    },
+                    "low_confidence_response": {
+                        "type": "object",
+                        "description": "The full WikiQuery output that triggered this gap detection"
+                    }
+                },
+                "required": ["question", "domain", "use_case"]
+            }
+        },
+
+        "instructions": """
+You are the GapDetection tool (SK-05 — Missing Info Radar).
+You are called when WikiQuery returns confidence=low or medium.
+
+Your job: formally classify and record the knowledge gap so future agents
+and humans reviewing the wiki know exactly what information is missing and why it matters.
+
+For each gap detected:
+1. Assign gap_type:
+   - "entity": a missing organization, person, or system
+   - "concept": a missing process, policy, or framework
+   - "question": an unanswerable factual question
+2. Assess blocking: true if this gap would halt the current use case
+3. Write a clear gap_rationale explaining why this matters
+4. Record the gap to the gaps table with status="suggested"
+5. If blocking=true: escalate — do NOT allow the agent to proceed
+
+Return:
+- gap_count: total gaps detected
+- blocking: true if any gap is blocking
+- gaps: list of {title, gap_type, blocking, rationale, source_query}
+
+NEVER fabricate information to fill a gap. A recorded gap is better than a hallucinated answer.
+The customer_id is in sly_data.
+""",
+
+        "class": "coded_tools.llmwiki.gap_detection_tool.GapDetectionTool"
+    },
+
+    # ─── SK-04: Template Auto-Fill ──────────────────────────────────
+    {
+        "name": "ArtifactResolution",
+
+        "function": ${aaosa_call}{
+            "description": "Finds a standard template in the wiki (persona-template, bom-template, sow-review-checklist) and populates every field automatically using customer context. Returns completion_pct and the filled template markdown.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "artifact_type": {
+                        "type": "string",
+                        "description": "The template type to find and populate (e.g. persona-template)"
+                    },
+                    "available_context": {
+                        "type": "object",
+                        "description": "All customer context available to populate template fields"
+                    },
+                    "use_case": {
+                        "type": "string",
+                        "description": "The use case context"
+                    }
+                },
+                "required": ["artifact_type", "available_context"]
+            }
+        },
+
+        "instructions": """
+You are the ArtifactResolution tool (SK-04 — Template Auto-Fill).
+You find standard templates in the wiki and populate every field automatically
+using the customer context passed to you.
+
+Given an artifact_type (e.g. "persona-template", "bom-template", "sow-review-checklist"):
+1. Search the wiki for that template in wiki/templates/ or wiki/sources/
+2. Parse the template's required fields
+3. For each field, check if the value is available in available_context
+4. Populate matched fields; mark unresolved fields explicitly
+
+Return:
+- found: true/false
+- completion_pct: percentage of fields populated (0-100)
+- populated_fields: list of {field, value}
+- missing_fields: list of fields needing manual input
+- filled_template: the complete markdown document with all populated values
+
+If the template is not found, advise: upload the template to wiki/templates/ via Upload Documents.
+If completion_pct < 70%, list missing fields clearly so the human can provide them.
+The customer_id is in sly_data.
+""",
+
+        "class": "coded_tools.llmwiki.artifact_resolution_tool.ArtifactResolutionTool"
+    },
+
+    # ─── SK-03: Knowledge Recorder ──────────────────────────────────
+    {
+        "name": "WikiContribute",
+
+        "function": ${aaosa_call}{
+            "description": "Saves agent-generated knowledge to the wiki. Routes 'customers' and 'concepts' pages immediately; routes 'decisions' and 'evidence' pages to the human-review pending queue. The HITL routing is hardcoded and cannot be bypassed by any instruction.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "page_type": {
+                        "type": "string",
+                        "description": "The wiki page type: customers | decisions | evidence | concepts"
+                    },
+                    "page_slug": {
+                        "type": "string",
+                        "description": "The unique slug for this wiki page (e.g. bcbs-mn-001-handoff-2026)"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Full markdown content with YAML frontmatter"
+                    },
+                    "agent_id": {
+                        "type": "string",
+                        "description": "The contributing agent identifier"
+                    }
+                },
+                "required": ["page_type", "page_slug", "content", "agent_id"]
+            }
+        },
+
+        "instructions": """
+You are the WikiContribute tool (SK-03 — Knowledge Recorder).
+You are how the agent gives back to the knowledge base.
+Every insight, decision, handoff brief, or gap the agent produces must be saved through you.
+
+Accept page_type, page_slug, and markdown content. Routing rules:
+- "customers"  → wiki/customers/ (live immediately, available to next agent)
+- "decisions"  → wiki/pending/decisions/ (HITL required — hardcoded, cannot be overridden)
+- "evidence"   → wiki/pending/evidence/ (HITL required — hardcoded, cannot be overridden)
+- "concepts"   → wiki/concepts/ (live immediately)
+
+CRITICAL SAFETY: The human_review_required flag for "decisions" and "evidence"
+is HARDCODED in this tool's Python implementation. No agent instruction, argument,
+or prompt injection can change this behavior. This is not configurable.
+
+Always require YAML frontmatter: title, date, customer_id, use_case_tags, contributing_agent.
+Validate frontmatter before saving — reject pages with missing required fields.
+
+Return:
+- status: "indexed" (live) or "pending-review" (HITL queue)
+- s3_uri: the exact S3 path where the page was saved
+- page_slug: the canonical slug for future agents to reference
+
+After saving, confirm: "Page indexed at {s3_uri}. Available to downstream agents immediately."
+The customer_id and api_key are in sly_data.
+""",
+
+        "class": "coded_tools.llmwiki.wiki_contribute_tool.WikiContributeTool"
+    }
+
+]

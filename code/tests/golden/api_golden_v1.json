@@ -1,0 +1,293 @@
+{
+  "version": "v1",
+  "created": "2026-07-08",
+  "description": "Business API golden dataset. 20 examples defining the full structured response contract for /wiki/ask and /wiki/query/{domain}. Used for Gate 1 schema validation and Gate 3 LLM-as-judge.",
+  "schema": {
+    "required_fields": ["answer", "confidence", "citations", "action_items", "gaps", "domain"],
+    "confidence_enum": ["high", "medium", "low"],
+    "citations_min": 1,
+    "answer_min_length": 30
+  },
+  "examples": [
+    {
+      "id": "API-001",
+      "request": {
+        "question": "What are the key delivery risks for a new QNXT healthcare payer implementation?",
+        "domain": "customer-onboarding",
+        "caller": "uc1-harness",
+        "agent_id": "s2s-agent-001"
+      },
+      "expected_response": {
+        "confidence": "high",
+        "domain": "customer-onboarding",
+        "answer_contains_any": ["risk", "migration", "data", "configuration", "payer"],
+        "citations_min": 1,
+        "action_items_min": 1,
+        "action_items_contain_any": ["data migration", "benefit plan", "timeline", "integration"]
+      },
+      "tags": ["uc1", "risk", "qnxt"]
+    },
+    {
+      "id": "API-002",
+      "request": {
+        "question": "What is the standard handoff checklist for a Sales-to-Service transition?",
+        "domain": "customer-onboarding"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "answer_contains_any": ["handoff", "checklist", "classification", "sponsor"],
+        "citations_min": 1,
+        "action_items_min": 2
+      },
+      "tags": ["uc1", "handoff", "checklist"]
+    },
+    {
+      "id": "API-003",
+      "request": {
+        "question": "What ARB security requirements apply to Facets environment provisioning?",
+        "domain": "provisioning"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "domain": "provisioning",
+        "answer_contains_any": ["encryption", "VPC", "IAM", "CloudTrail", "security"],
+        "citations_min": 1
+      },
+      "tags": ["provisioning", "security", "arb"]
+    },
+    {
+      "id": "API-004",
+      "request": {
+        "question": "What validation tests are required after QNXT benefit plan configuration?",
+        "domain": "configuration"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "domain": "configuration",
+        "answer_contains_any": ["deductible", "copay", "claim", "adjudication", "test"],
+        "citations_min": 1,
+        "action_items_min": 1
+      },
+      "tags": ["configuration", "qnxt", "validation"]
+    },
+    {
+      "id": "API-005",
+      "request": {
+        "question": "What data quality checks are required before member enrollment data migration?",
+        "domain": "data-migration"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "domain": "data-migration",
+        "answer_contains_any": ["duplicate", "date", "validation", "mapping", "DQ"],
+        "citations_min": 1
+      },
+      "tags": ["data-migration", "dq", "enrollment"]
+    },
+    {
+      "id": "API-006",
+      "request": {
+        "question": "What is the RBAC matrix for a QNXT delivery team?",
+        "domain": "identity-access"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium", "low"],
+        "domain": "identity-access",
+        "answer_non_empty": true,
+        "citations_min": 0
+      },
+      "tags": ["identity-access", "rbac", "qnxt"]
+    },
+    {
+      "id": "API-007",
+      "request": {
+        "question": "What are the SIT sign-off criteria for a healthcare payer platform?",
+        "domain": "testing"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "domain": "testing",
+        "answer_contains_any": ["P1", "P2", "defect", "sign-off", "HIPAA", "UAT"],
+        "citations_min": 1
+      },
+      "tags": ["testing", "sit", "sign-off"]
+    },
+    {
+      "id": "API-008",
+      "request": {
+        "question": "What go/no-go criteria must be met before Facets production cutover?",
+        "domain": "cutover"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "domain": "cutover",
+        "answer_contains_any": ["sign-off", "rollback", "migration", "authorization", "monitoring"],
+        "citations_min": 1,
+        "action_items_min": 1
+      },
+      "tags": ["cutover", "facets", "go-no-go"]
+    },
+    {
+      "id": "API-009",
+      "request": {
+        "question": "What monitoring thresholds trigger escalation during Facets hypercare?",
+        "domain": "hypercare"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "domain": "hypercare",
+        "answer_contains_any": ["error rate", "batch", "P1", "escalation", "threshold"],
+        "citations_min": 1
+      },
+      "tags": ["hypercare", "facets", "monitoring"]
+    },
+    {
+      "id": "API-010",
+      "request": {
+        "question": "What does the QNXT hypercare exit checklist require?",
+        "domain": "hypercare"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "domain": "hypercare",
+        "answer_contains_any": ["P1", "incident", "30 days", "sign-off", "operations"],
+        "citations_min": 1
+      },
+      "tags": ["hypercare", "qnxt", "exit"]
+    },
+    {
+      "id": "API-011",
+      "request": {
+        "question": "What is LLMWiki and what problems does it solve?",
+        "domain": "customer-onboarding"
+      },
+      "expected_response": {
+        "answer_non_empty": true,
+        "citations_min": 0,
+        "confidence_in": ["high", "medium", "low"]
+      },
+      "tags": ["platform", "general"]
+    },
+    {
+      "id": "API-012",
+      "request": {
+        "question": "What E2E test scenarios are required for QNXT batch processing validation?",
+        "domain": "testing"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "domain": "testing",
+        "answer_contains_any": ["batch", "claims", "835", "eligibility", "processing"],
+        "citations_min": 1
+      },
+      "tags": ["testing", "e2e", "batch", "qnxt"]
+    },
+    {
+      "id": "API-013",
+      "request": {
+        "question": "What source-to-target mapping applies to provider data migration to Facets?",
+        "domain": "data-migration"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "domain": "data-migration",
+        "answer_contains_any": ["NPI", "provider", "mapping", "Facets", "fee schedule"],
+        "citations_min": 1
+      },
+      "tags": ["data-migration", "facets", "provider"]
+    },
+    {
+      "id": "API-014",
+      "request": {
+        "question": "What SOPs should be handed over to the ops team at QNXT go-live?",
+        "domain": "handover"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium", "low"],
+        "domain": "handover",
+        "answer_non_empty": true,
+        "citations_min": 0
+      },
+      "tags": ["handover", "qnxt", "sop"]
+    },
+    {
+      "id": "API-015",
+      "request": {
+        "question": "What design standards apply to TriZetto Managed Cloud Services environments?",
+        "domain": "provisioning"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium"],
+        "domain": "provisioning",
+        "answer_contains_any": ["Terraform", "IaC", "tagging", "backup", "VPC"],
+        "citations_min": 1
+      },
+      "tags": ["provisioning", "managed-cloud", "standards"]
+    },
+    {
+      "id": "API-016",
+      "request": {
+        "question": "What governance controls does LLMWiki apply to AgentCore skill invocations?",
+        "domain": "customer-onboarding"
+      },
+      "expected_response": {
+        "answer_contains_any": ["rate limit", "cost", "cache", "governance", "token", "budget"],
+        "citations_min": 0,
+        "confidence_in": ["high", "medium", "low"]
+      },
+      "tags": ["governance", "agentcore", "platform"]
+    },
+    {
+      "id": "API-017",
+      "request": {
+        "question": "What dependency risks exist for QNXT claims routing configuration?",
+        "domain": "configuration"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium", "low"],
+        "answer_contains_any": ["benefit plan", "provider", "ICD", "coordination", "routing"],
+        "citations_min": 0
+      },
+      "tags": ["configuration", "qnxt", "claims-routing"]
+    },
+    {
+      "id": "API-018",
+      "request": {
+        "question": "What least-privilege IAM policies apply to a Facets DBA role?",
+        "domain": "identity-access"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium", "low"],
+        "answer_non_empty": true,
+        "citations_min": 0
+      },
+      "tags": ["identity-access", "facets", "dba"]
+    },
+    {
+      "id": "API-019",
+      "request": {
+        "question": "This question is about a topic completely outside the LLMWiki knowledge base — unicorn healthcare plan type XYZ-ALPHA-9000.",
+        "domain": "customer-onboarding"
+      },
+      "expected_response": {
+        "confidence": "low",
+        "gaps_min": 1,
+        "answer_non_empty": true
+      },
+      "tags": ["out-of-scope", "low-confidence", "gap-detection"]
+    },
+    {
+      "id": "API-020",
+      "request": {
+        "question": "What is the cloud migration strategy for a TriZetto client moving from on-premises Facets to AWS?",
+        "domain": "provisioning"
+      },
+      "expected_response": {
+        "confidence_in": ["high", "medium", "low"],
+        "answer_contains_any": ["AWS", "cloud", "migration", "Facets", "on-premises"],
+        "citations_min": 0
+      },
+      "tags": ["provisioning", "cloud-migration", "facets"]
+    }
+  ]
+}

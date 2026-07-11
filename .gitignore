@@ -1,0 +1,50 @@
+# Personal / resume documents
+*.docx
+*.xlsx
+
+# Sensitive / credentials
+*.pem
+*.key
+*.env
+.env*
+currentprompt.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Docker build cache
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log
+
+# Test output
+.pytest_cache/
+htmlcov/
+*.coverage
+
+# Build artefacts (Lambda deployment zips)
+code/.build/
+
+# Terraform provider binaries and state (large, auto-downloaded)
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+.terraform.lock.hcl
+
+# Wheels (large binaries — already committed to neuro_san/ intentionally)
+# Uncomment to exclude:
+# code/neuro_san/*.whl

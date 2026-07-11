@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "llmwiki-neuro-san"
+version = "1.0.0"
+description = "LLMWiki coded tools for Neuro SAN — SK-01 through SK-05 as AAOSA sub-agents"
+requires-python = ">=3.10"
+dependencies = [
+    "boto3>=1.34.0",
+    "neuro-san>=0.3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "moto[lambda,dynamodb]>=5.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["coded_tools*"]
+
+[tool.setuptools.package-dir]
+"" = "."
+
+# ── Local dev: put lambda/common/ on sys.path so llmwiki_common is importable
+# Add to PYTHONPATH: export PYTHONPATH=/path/to/llmwiki/code/lambda/common:$PYTHONPATH
+# In Docker: the Dockerfile sets ENV PYTHONPATH=/app/lambda_common

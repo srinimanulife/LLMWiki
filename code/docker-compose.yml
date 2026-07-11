@@ -1,0 +1,57 @@
+# Local development compose — runs Streamlit + neuro-san sidecar together.
+# Usage:
+#   cd code/
+#   docker compose up --build
+#
+# Then open:
+#   Streamlit UI : http://localhost:8501
+#   nsflow UI    : http://localhost:4173   (neuro-san React UI, direct access)
+#
+# AWS credentials: mount your ~/.aws directory so Bedrock calls work.
+# The AWS_PROFILE env var selects the profile (default: tzg-sandbox).
+
+services:
+
+  neuro-san:
+    build:
+      context: .
+      dockerfile: neuro_san/Dockerfile
+    image: llmwiki-neuro-san:local
+    container_name: llmwiki-neuro-san
+    ports:
+      - "4173:4173"   # nsflow React UI (direct browser access locally)
+      - "8080:8080"   # neuro-san gRPC/HTTP API
+    environment:
+      - WIKI_BUCKET=${WIKI_BUCKET:-llmwiki-278e7e22}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_PROFILE=${AWS_PROFILE:-tzg-sandbox}
+      - AGENT_MANIFEST_FILE=registries/llmwiki/manifest.hocon
+      - AGENT_MANIFEST_UPDATE_PERIOD_SECONDS=5
+    volumes:
+      - ~/.aws:/root/.aws:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: streamlit/Dockerfile
+    image: llmwiki-streamlit:local
+    container_name: llmwiki-streamlit
+    ports:
+      - "8501:8501"
+    environment:
+      - WIKI_BUCKET=${WIKI_BUCKET:-llmwiki-278e7e22}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_PROFILE=${AWS_PROFILE:-tzg-sandbox}
+      # Point at the neuro-san sidecar by service name (docker network DNS)
+      - NSFLOW_LOCAL_URL=http://neuro-san:4173
+    volumes:
+      - ~/.aws:/root/.aws:ro
+    depends_on:
+      neuro-san:
+        condition: service_healthy

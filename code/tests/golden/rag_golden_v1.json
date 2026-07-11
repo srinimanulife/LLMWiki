@@ -1,0 +1,153 @@
+{
+  "version": "v1",
+  "created": "2026-07-08",
+  "description": "RAG golden dataset for RAGAS scoring. 20 seed examples covering key LLMWiki domains. REPLACE with 100+ production-mined examples per llmwiki-eval-strategy.md Part 1.",
+  "target_scores": {
+    "context_precision": 0.80,
+    "context_recall": 0.80,
+    "faithfulness": 0.80,
+    "answer_relevancy": 0.75
+  },
+  "examples": [
+    {
+      "id": "RAG-001",
+      "domain": "customer-onboarding",
+      "question": "What is the standard Sales-to-Service handoff checklist for a new healthcare payer?",
+      "reference_answer": "The standard Sales-to-Service handoff includes: (1) customer classification by product and risk tier, (2) collection of executive sponsor and decision authority, (3) go-live timeline and contractual commitments, (4) data migration and legacy system constraints, and (5) loading the UC1 delivery playbook for the relevant product.",
+      "tags": ["uc1", "handoff", "payer"]
+    },
+    {
+      "id": "RAG-002",
+      "domain": "customer-onboarding",
+      "question": "What questions should a delivery manager ask before starting a QNXT implementation?",
+      "reference_answer": "Before starting a QNXT implementation, a delivery manager should confirm: the executive sponsor and decision authority, the contractual go-live date and penalty clauses, prior implementation attempts and their outcomes, HIPAA compliance requirements, EHR integration dependencies (typically Epic or Cerner), and data migration constraints from legacy systems.",
+      "tags": ["uc1", "qnxt", "delivery"]
+    },
+    {
+      "id": "RAG-003",
+      "domain": "provisioning",
+      "question": "What are the ARB security requirements for a Facets environment provisioning?",
+      "reference_answer": "ARB security requirements for Facets environment provisioning include: encryption at rest for all data stores, VPC isolation with private subnets for application tiers, IAM roles with least-privilege access scoped to specific resource ARNs, CloudTrail logging enabled, and security group rules that deny all inbound traffic except from approved CIDR ranges.",
+      "tags": ["provisioning", "facets", "security", "arb"]
+    },
+    {
+      "id": "RAG-004",
+      "domain": "provisioning",
+      "question": "What is the BOM template for a TriZetto QNXT environment?",
+      "reference_answer": "The QNXT BOM template includes: application server tier (EC2 instances sized by transaction volume), database tier (RDS SQL Server with Multi-AZ), load balancer (ALB), S3 buckets for document storage, CloudWatch for monitoring, and VPC with public/private subnet architecture. The specific instance sizes are determined by the expected claims volume and concurrent user count.",
+      "tags": ["provisioning", "qnxt", "bom"]
+    },
+    {
+      "id": "RAG-005",
+      "domain": "testing",
+      "question": "What are the required sign-off criteria for SIT completion on a healthcare payer platform?",
+      "reference_answer": "SIT sign-off for a healthcare payer platform requires: all P1 and P2 defects resolved or risk-accepted, claims processing volume test passing at 110% of expected peak load, EDI transaction validation passing for 835/837/270/271 transaction sets, HIPAA compliance scan with zero critical findings, and written sign-off from the customer's UAT lead.",
+      "tags": ["testing", "sit", "payer", "sign-off"]
+    },
+    {
+      "id": "RAG-006",
+      "domain": "data-migration",
+      "question": "What data quality checks are required before migrating member enrollment data to QNXT?",
+      "reference_answer": "Before migrating member enrollment data to QNXT, required DQ checks include: duplicate member ID detection, date-of-birth validation against SSN format, active coverage date range consistency, plan code mapping validation against QNXT benefit plan master, and subscriber/dependent relationship integrity. All checks must produce a DQ scorecard with pass/fail per record batch.",
+      "tags": ["data-migration", "qnxt", "dq", "enrollment"]
+    },
+    {
+      "id": "RAG-007",
+      "domain": "cutover",
+      "question": "What are the go/no-go criteria before a Facets production cutover?",
+      "reference_answer": "Facets production cutover go/no-go criteria include: all SIT and E2E test cycles completed with sign-off, data migration dry run completed within the cutover window, rollback procedure documented and tested, operations team trained and on standby, monitoring dashboards configured, and customer executive sponsor has signed the cutover authorization form.",
+      "tags": ["cutover", "facets", "go-no-go"]
+    },
+    {
+      "id": "RAG-008",
+      "domain": "hypercare",
+      "question": "What monitoring thresholds trigger an escalation during Facets hypercare?",
+      "reference_answer": "During Facets hypercare, escalation is triggered when: claims processing error rate exceeds 2% over a 15-minute window, batch job completion falls more than 30 minutes behind schedule, database connection pool exhaustion is detected, API response time p95 exceeds 3 seconds, or any P1 production incident is raised by the customer operations team.",
+      "tags": ["hypercare", "facets", "monitoring", "escalation"]
+    },
+    {
+      "id": "RAG-009",
+      "domain": "identity-access",
+      "question": "What is the RBAC matrix for a QNXT implementation delivery team?",
+      "reference_answer": "The QNXT delivery team RBAC matrix assigns roles as follows: Delivery Manager has read access to all modules and write access to project tracking; Configuration Analyst has write access to benefit plan, provider, and member modules; Data Migration Engineer has write access to data load utilities and read-only access to production data; and Security Auditor has read-only access to all modules and audit log access.",
+      "tags": ["identity-access", "qnxt", "rbac"]
+    },
+    {
+      "id": "RAG-010",
+      "domain": "configuration",
+      "question": "What validation tests are required after configuring QNXT benefit plan rules?",
+      "reference_answer": "Post-configuration validation for QNXT benefit plan rules requires: claim adjudication sample tests covering at minimum deductible, copay, coinsurance, and out-of-pocket maximum scenarios; EOB output review against expected benefit language; coordination of benefits test cases for dual-coverage members; and regression testing against the prior configuration baseline to confirm no existing rules were altered.",
+      "tags": ["configuration", "qnxt", "benefit-plan", "validation"]
+    },
+    {
+      "id": "RAG-011",
+      "domain": "customer-onboarding",
+      "question": "What is LLMWiki governance and how does it affect agent performance?",
+      "reference_answer": "LLMWiki governance is the platform layer that tracks Bedrock token costs per caller, implements semantic response caching to reduce repeat query costs, and enforces per-agent rate limits. From an agent performance perspective, governance adds <5ms overhead on cache misses (DynamoDB write) and eliminates Bedrock latency entirely on cache hits, returning responses in <100ms. It also enforces daily budget ceilings per AgentCore skill to prevent runaway costs.",
+      "tags": ["governance", "platform", "performance"]
+    },
+    {
+      "id": "RAG-012",
+      "domain": "provisioning",
+      "question": "What design standards apply to a TriZetto Managed Cloud Services environment?",
+      "reference_answer": "TriZetto Managed Cloud Services design standards require: all environments deployed as infrastructure-as-code (Terraform), VPC design following hub-and-spoke or isolated-VPC patterns, tagging standards applied to all resources (project, environment, owner, cost-center), automated backup policies for all data stores, and change management approval for any production environment modifications.",
+      "tags": ["provisioning", "managed-cloud", "design-standards"]
+    },
+    {
+      "id": "RAG-013",
+      "domain": "handover",
+      "question": "What does the customer education pack include for a QNXT go-live?",
+      "reference_answer": "The QNXT customer education pack for go-live includes: system operations guide covering daily batch job monitoring and exception handling, user administration procedures for creating and deactivating user accounts, claims inquiry and adjustment procedures, standard report catalog with run schedules, escalation matrix with on-call contacts, and the hypercare support SLA terms.",
+      "tags": ["handover", "qnxt", "education", "go-live"]
+    },
+    {
+      "id": "RAG-014",
+      "domain": "testing",
+      "question": "What are the E2E scenario definitions for QNXT batch validation?",
+      "reference_answer": "QNXT E2E batch validation scenarios cover: end-of-day claims adjudication batch completing within the processing window with zero unprocessed claims, 835 remittance advice generation matching the adjudicated claims total, nightly eligibility file load from the member data source completing with <0.1% error rate, and premium billing batch generating correct invoices for all active groups.",
+      "tags": ["testing", "e2e", "qnxt", "batch"]
+    },
+    {
+      "id": "RAG-015",
+      "domain": "customer-onboarding",
+      "question": "What are the key delivery risks for a first-time Facets implementation for a healthcare payer?",
+      "reference_answer": "Key delivery risks for a first-time Facets implementation include: data migration scope underestimation (particularly for legacy enrollment data with non-standard formats), benefit plan configuration complexity exceeding estimates for complex multi-product payers, integration development timeline for EDI trading partners, user acceptance testing capacity constraints on the customer side, and change management readiness if this is the customer's first cloud-hosted platform.",
+      "tags": ["uc1", "facets", "risk", "payer", "first-time"]
+    },
+    {
+      "id": "RAG-016",
+      "domain": "provisioning",
+      "question": "What instance types are recommended for a TriZetto NetworX production environment?",
+      "reference_answer": "TriZetto NetworX production environments typically use memory-optimized instance types (r-series) for the application tier due to NetworX's in-memory caching architecture. The database tier uses RDS with Provisioned IOPS storage for consistent low-latency network fee processing. Specific sizing depends on the contracted network size and monthly fee calculation volume.",
+      "tags": ["provisioning", "networx", "instance-types"]
+    },
+    {
+      "id": "RAG-017",
+      "domain": "data-migration",
+      "question": "What is the standard source-to-target mapping for provider data migration to Facets?",
+      "reference_answer": "Standard source-to-target mapping for provider data to Facets maps: NPI to Facets provider ID, tax ID to TIN field, specialty codes to Facets specialty master via crosswalk table, contract effective dates to Facets fee schedule effective date ranges, and network participation flags to Facets panel status. Legacy provider IDs are preserved in an extended attribute field for cross-reference.",
+      "tags": ["data-migration", "facets", "provider", "mapping"]
+    },
+    {
+      "id": "RAG-018",
+      "domain": "hypercare",
+      "question": "What does the QNXT hypercare exit checklist require?",
+      "reference_answer": "The QNXT hypercare exit checklist requires: 30 consecutive days with no P1 incidents, claims processing error rate below 0.5% for three consecutive weeks, all P2 incidents resolved or formally deferred to the product roadmap, customer operations team independently handling daily monitoring without engagement team support, and customer sign-off on the hypercare exit certificate.",
+      "tags": ["hypercare", "qnxt", "exit-checklist"]
+    },
+    {
+      "id": "RAG-019",
+      "domain": "configuration",
+      "question": "What are the known dependency risks for QNXT claims routing configuration?",
+      "reference_answer": "Known dependency risks for QNXT claims routing configuration include: benefit plan rules must be finalized before routing rules can be validated, provider network assignments affect routing logic and must be complete before testing, coordination of benefits rules interact with routing decisions and require joint testing, and changes to ICD-10 code sets require annual routing rule updates typically in Q4.",
+      "tags": ["configuration", "qnxt", "claims-routing", "dependencies"]
+    },
+    {
+      "id": "RAG-020",
+      "domain": "identity-access",
+      "question": "What least-privilege IAM policies apply to a Facets database administrator role?",
+      "reference_answer": "The Facets DBA role least-privilege IAM policy grants: RDS connect permission scoped to the Facets database cluster ARN, S3 read/write on the Facets backup bucket only, CloudWatch Logs read on the database log group, and SSM GetParameter for database credentials. All permissions are conditional on MFA authentication and restricted to us-east-1 region.",
+      "tags": ["identity-access", "facets", "dba", "least-privilege"]
+    }
+  ]
+}
