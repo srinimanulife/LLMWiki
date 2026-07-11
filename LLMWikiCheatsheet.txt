@@ -1,0 +1,51 @@
+To test http://llmwiki-alb-1382316210.us-east-1.elb.amazonaws.com/ and try to test the application end to end to comeout for enhancements.
+You can ask aws cloud migration steps
+
+Try to expand this usecase with trying to traceback the trceability all the way to source documents being uploaded to S3 rather than the current .md file only.  Also ask it to add some test cases to see how to expand the wiki with new questions to try so that business users can see the WIKI is learning an expanding based on usage.
+
+Can we get the clickable source document to preview etc.
+---
+
+I want you to help me in generating problem-mgnt usecase using llmwiki and harness steps.  I want you to create
+a new s3 bucket with llmwiki-problem-mgnt as prefix.  
+In raw
+
+I want you to simplify the steps so that we can test step by step and provide you feedback to imrpove.
+The files are in @problem-mgnt directory.
+
+Eventually I want to have 
+
+Our objective is to create a LLMWiki and harness based application for problem management application and deploy into AWS Agentcore environment.
+Please read @bringyourskill_harness.md Please create UC Brief, Workflow Spec, and Skill Spec(s) md files required for further generation.
+Please identify agents, workflows, skills as required for these documents.
+Below is the information regarding the problem management application.
+
+Trizetto platforms - TCS, QNXT, EAM, and EDM experience frequent recurring incidents and operational disruptions. 
+While incident management restores service quickly, it often relies on temporary fixes, and increased operational overhead. 
+To address this, Problem Management provides a structured approach focused on eliminating the underlying causes of incidents rather than repeatedly resolving symptoms.
+The core activities of Problem Management include identification and logging of recurring issues, categorization and prioritization, root cause analysis (RCA), definition of temporary workarounds and permanent fixes, knowledge capture, and proactive trend analysis.
+
+For example:
+Repeated TCS communication failures traced to an SFTP timeout configuration issue and permanently resolved through configuration tuning
+Multiple QNXT claim processing delays analyzed to identify a database index bottleneck and resolved via optimization
+Recurring EAM workflow failures linked to API timeout thresholds and mitigated through retry logic and scaling adjustments
+Frequent EDM document ingestion errors correlated to malformed input files, leading to validation rules and pre-processing checks
+By systematically executing these activities, organizations can reduce incident volume, improve service reliability, and enable continuous improvement across the enterprise ecosystem.
+
+Please find at the location problen-mgmt\raw a sample input file that shows incicents for TCS, QNXT, EAM and EDM 
+Using the above description and the sample input file, create the 3 md files - brief, workflow spec and skill spec.
+
+Please let me know if you need any other information to create the md files. Do not assume anything.
+Please assume basic simple steps for the harness and skills and previous 8 steps were kind of confusing.
+Please comeout with your md files under the directory problem-mgnt with prefix pm-. 
+
+---
+I want you to create a seperate s3 bucket with llmwiki-problem-mgnt prefix so that testing this project is cleaner and easier. Rightnow
+the current s3 bucket has lots of files and let the streamlit has option to default to this Sales-to-Service Agent.  But when we choose
+problem management agent it should point to this newly created s3 bucket but probably can reuse rest of the resources dynamically.  please
+make sure to test both the agentic application after this change.
+
+I want you to implement @problem-mgnt/pm-skill-spec-sk06-problem-classifier.md @pm-uc-brief.md @pm-workflow-spec.md
+and try to deploy all the lambdas matching to problem-mgnt folder.  Just upload only those files required for problem mangement only and 
+no ther files in this new s3 bucket to avoid clutter. Also outline how to use skill builder, skill hub, skill studio
+as part of this demo to business users so that they can create similar usecases by themselves.  Ultrathink implement and test end to end

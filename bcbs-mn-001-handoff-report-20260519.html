@@ -1,0 +1,133 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Handoff Report — BlueCross BlueShield Minnesota</title>
+      <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f5f6fa; color: #2c3e50; }
+        .header { background: linear-gradient(135deg, #1a2a4a 0%, #2c4a7a 100%); color: white; padding: 32px 40px; }
+        .header h1 { margin: 0 0 6px 0; font-size: 1.6em; }
+        .header .subtitle { opacity: 0.8; font-size: 0.9em; }
+        .header-meta { display: flex; gap: 32px; margin-top: 20px; flex-wrap: wrap; }
+        .header-meta .meta-item { font-size: 0.85em; }
+        .header-meta .meta-item .key { opacity: 0.7; display: block; margin-bottom: 2px; }
+        .header-meta .meta-item .val { font-weight: 600; }
+        .kpi-bar { background: white; display: flex; gap: 0; border-bottom: 1px solid #e0e0e0; }
+        .kpi { flex: 1; padding: 16px 24px; border-right: 1px solid #e0e0e0; text-align: center; }
+        .kpi:last-child { border-right: none; }
+        .kpi .kpi-label { font-size: 0.75em; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+        .kpi .kpi-val { font-size: 1.4em; font-weight: 700; }
+        .content { max-width: 900px; margin: 24px auto; padding: 0 20px 40px; }
+        .section { background: white; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        .section-header { background: #f0f3f9; padding: 12px 20px; font-weight: 600; font-size: 0.95em; border-radius: 8px 8px 0 0; border-left: 4px solid #2c4a7a; }
+        .section-body { padding: 16px 20px; }
+        table.meta-table { border-collapse: collapse; width: 100%; }
+        table.meta-table td { padding: 6px 12px; }
+        table.meta-table td.label { color: #666; font-size: 0.88em; width: 160px; font-weight: 500; }
+        .data-table { border-collapse: collapse; width: 100%; font-size: 0.88em; }
+        .data-table th { background: #f0f3f9; padding: 8px 12px; text-align: left; font-weight: 600; }
+        .data-table td { padding: 8px 12px; border-top: 1px solid #eee; vertical-align: top; }
+        ul { margin: 8px 0; padding-left: 20px; }
+        li { margin-bottom: 4px; }
+        .footer { text-align: center; color: #aaa; font-size: 0.8em; margin-top: 32px; padding-bottom: 20px; }
+        @media print { body { background: white; } .section { box-shadow: none; } }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>Sales-to-Service Handoff Report</h1>
+        <div class="subtitle">UC1 Hard Harness — LLMWiki Automated Delivery System</div>
+        <div class="header-meta">
+          <div class="meta-item"><span class="key">Customer</span><span class="val">BlueCross BlueShield Minnesota</span></div>
+          <div class="meta-item"><span class="key">Product(s)</span><span class="val">UC1 Sales-to-Service Onboarding, UC2 Environment Provisioning (pending)</span></div>
+          <div class="meta-item"><span class="key">SOW Reference</span><span class="val">SOW-2026-BCBS-MN-001</span></div>
+          <div class="meta-item"><span class="key">Report Date</span><span class="val">2026-05-19</span></div>
+        </div>
+      </div>
+
+      <div class="kpi-bar">
+        <div class="kpi">
+          <div class="kpi-label">Risk Tier</div>
+          <div class="kpi-val" style="color:#c0392b">HIGH</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Go-Live Urgency</div>
+          <div class="kpi-val" style="color:#e67e22">MEDIUM</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Complexity</div>
+          <div class="kpi-val" style="color:#c0392b">HIGH</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Wiki Confidence</div>
+          <div class="kpi-val" style="color:#e67e22">MEDIUM</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Knowledge Gaps</div>
+          <div class="kpi-val" style="color:#c0392b">9 (6 blocking)</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Template Fill</div>
+          <div class="kpi-val" style="color:#c0392b">0%</div>
+        </div>
+      </div>
+
+      <div class="content">
+        
+        <div class="section">
+          <div class="section-header">1. Customer Overview</div>
+          <div class="section-body"><p>BlueCross BlueShield Minnesota (bcbs-mn-001) is a health insurance organization currently in the earliest stage of a Sales-to-Service onboarding engagement governed by SOW-2026-BCBS-MN-001. The account was formally handed off on 2026-05-15 via the UC1 Sales-to-Service Orchestrator and carries a HIGH risk tier, HIGH implementation complexity, and MEDIUM go-live urgency, with template completion at 0%, indicating implementation has not yet begun.
+
+The onboarding engagement is structured around four key pillars: structured enrollment handoff protocols for transferring complete member data from sales to service teams; welcome and onboarding communications for newly enrolled members; real-time CRM and care management data continuity upon enrollment completion; and performance measurement via CAHPS member satisfaction scores, first-contact resolution rates, and time-to-first-service-touch metrics. The Customer Handoff Brief currently serves as the primary input document for the UC2 Environment Provisioning Agent, making environment setup the immediate next step.</p><ul><li>Customer legal name: BlueCross BlueShield Minnesota; Customer ID: bcbs-mn-001</li><li>SOW Reference: SOW-2026-BCBS-MN-001</li><li>Formal handoff date: 2026-05-15</li><li>Risk Tier: HIGH</li><li>Implementation Complexity: HIGH</li><li>Go-Live Urgency: MEDIUM</li><li>Template completion is 0% — implementation has not yet begun</li><li>Domain: customer-onboarding; Status: active</li><li>Contributing agent: uc1-sales-to-service-orchestrator-v1</li><li>CRM and care management systems require real-time status updates upon enrollment completion</li><li>Performance measurement includes CAHPS scores, first-contact resolution, and time-to-first-service-touch</li></ul></div>
+        </div>
+        
+        <div class="section">
+          <div class="section-header">2. Engagement Classification</div>
+          <div class="section-body"><p>BlueCross BlueShield Minnesota is a new payer engagement at 0% template completion with no implementation progress made since the 2026-05-15 handoff date, placing it at maximum delivery risk. The HIGH complexity rating is driven by multi-system integration requirements including real-time CRM and care management data continuity, structured enrollment handoff protocols, and performance measurement frameworks tied to CAHPS scores and first-contact resolution. UC2 Environment Provisioning remains pending as the critical next dependency, creating a cascading schedule risk if not initiated promptly despite the MEDIUM go-live urgency classification.</p><table class='meta-table'><tr><td class='label'>Customer Type</td><td>payer</td></tr><tr><td class='label'>Risk Tier</td><td><span style="background:#c0392b;color:#fff;padding:2px 10px;border-radius:12px;font-weight:600;font-size:0.85em">HIGH</span></td></tr><tr><td class='label'>Go-Live Urgency</td><td><span style="background:#e67e22;color:#fff;padding:2px 10px;border-radius:12px;font-weight:600;font-size:0.85em">MEDIUM</span></td></tr><tr><td class='label'>Complexity</td><td><span style="background:#c0392b;color:#fff;padding:2px 10px;border-radius:12px;font-weight:600;font-size:0.85em">HIGH</span></td></tr></table></div>
+        </div>
+        
+        <div class="section">
+          <div class="section-header">3. Sales Team Context</div>
+          <div class="section-body"><p>No prior attempts. CMO is executive sponsor, full decision authority. Go-live Q1 2027, no penalty clauses. HIPAA required; EHR is Epic. Jane Smith (IT) owns data readiness.</p></div>
+        </div>
+        
+        <div class="section">
+          <div class="section-header">4. Delivery Playbook</div>
+          <div class="section-body"><table class='meta-table'><tr><td class='label'>Playbook Steps</td><td>0</td></tr><tr><td class='label'>Wiki Pages Loaded</td><td>3</td></tr></table></div>
+        </div>
+        
+        <div class="section">
+          <div class="section-header">5. Risk Analysis</div>
+          <div class="section-body"><p><strong>Wiki Confidence:</strong> <span style="background:#e67e22;color:#fff;padding:2px 10px;border-radius:12px;font-weight:600;font-size:0.85em">MEDIUM</span></p><p></p></div>
+        </div>
+        
+        <div class="section">
+          <div class="section-header">6. Knowledge Gaps</div>
+          <div class="section-body">
+        <table class="data-table">
+          <thead><tr><th>Gap</th><th>Type</th><th>Action Required</th></tr></thead>
+          <tbody><tr><td><span style="color:#c0392b;font-weight:600">[BLOCKING]</span> BCBS-MN Approved Risk Assessment Framework or Policy Document</td><td><code>missing-artifact</code></td><td>Does BCBS-MN have an existing, approved risk assessment framework, policy, or scoring methodology that must be applied during customer onboarding (e.g., a formal risk tiering matrix, compliance checklist, or vendor/customer risk policy)? If so, please provide or link to that document.</td></tr><tr><td><span style="color:#c0392b;font-weight:600">[BLOCKING]</span> Specific Regulatory and Compliance Scope for This Onboarding Use Case</td><td><code>missing-standard</code></td><td>Which specific regulatory frameworks must be considered during this onboarding risk analysis? For example: HIPAA/HITECH, Minnesota state health data privacy laws (Minn. Stat. § 144.335), CMS requirements, ACA compliance, or others? Please confirm which are in scope for UC1 and whether any apply specifically to the customer type being onboarded (e.g., employer group, individual, broker).</td></tr><tr><td>Historical Risk Incidents or Audit Findings from Prior BCBS-MN Onboarding Cycles</td><td><code>missing-customer-history</code></td><td>Has BCBS-MN experienced any prior compliance findings, audit flags, or operational risk incidents specifically tied to the customer onboarding process? Any documented lessons learned or risk categories that have been elevated based on past experience would help calibrate the risk criteria for UC1.</td></tr><tr><td><span style="color:#c0392b;font-weight:600">[BLOCKING]</span> No documented HIPAA BAA requirement policy for healthcare onboarding</td><td><code>missing-artifact</code></td><td>Does your onboarding process require a signed Business Associate Agreement (BAA) with healthcare customers like BCBS-MN before data exchange or system access is granted, and if so, which team owns that step and what triggers it?</td></tr><tr><td><span style="color:#c0392b;font-weight:600">[BLOCKING]</span> No healthcare-specific risk evaluation checklist or gate criteria on file</td><td><code>missing-standard</code></td><td>Is there a formal checklist or set of gate criteria (covering items such as HIPAA compliance posture, PHI data sensitivity classification, state insurance licensing, and SOC 2 alignment) that must be completed before a healthcare payer like BCBS-MN can be approved for onboarding? If yes, can you share that document or point to where it lives?</td></tr><tr><td>Unknown whether BCBS-MN has previously submitted compliance attestations or risk documentation</td><td><code>missing-customer-history</code></td><td>Has BCBS-MN (customer ID: bcbs-mn-001) already provided any compliance attestations, security questionnaires, or licensing documentation as part of a prior engagement or pre-sales process that could be used to satisfy healthcare onboarding risk requirements?</td></tr><tr><td><span style="color:#c0392b;font-weight:600">[BLOCKING]</span> Missing Risk Mitigation SOP for Healthcare Onboarding</td><td><code>missing-artifact</code></td><td>Is there a documented Standard Operating Procedure (SOP) or runbook that defines the required risk mitigation steps when a risk is identified during the BCBS-MN customer onboarding process? If so, please provide the document or a link to it.</td></tr><tr><td><span style="color:#c0392b;font-weight:600">[BLOCKING]</span> Escalation Path and Responsible Owners Not Defined</td><td><code>missing-standard</code></td><td>Who are the designated escalation contacts (by role or name) and what is the escalation path if a risk is flagged during onboarding for BCBS-MN? For example: Does the account manager escalate to a compliance officer, a risk committee, or a specific team — and within what timeframe?</td></tr><tr><td>BCBS-MN Specific Risk Tolerance or Classification Thresholds Unknown</td><td><code>missing-customer-history</code></td><td>Does BCBS-MN have any customer-specific risk classification thresholds or contractual requirements that determine how risks are categorized (e.g., low/medium/high) and what triggers a mandatory escalation versus a standard mitigation action during onboarding?</td></tr></tbody>
+        </table></div>
+        </div>
+        
+        <div class="section">
+          <div class="section-header">7. Persona Template Status</div>
+          <div class="section-body">
+    <div style="margin-bottom:8px">
+      <strong>Completion: 0%</strong> &nbsp;
+      <span style="display:inline-block;width:200px;height:10px;background:#eee;border-radius:5px;vertical-align:middle">
+        <span style="display:inline-block;width:0%;height:10px;background:#c0392b;border-radius:5px"></span>
+      </span>
+    </div>
+    <p>Populated fields: 0 &nbsp;|&nbsp; Missing: 0</p></div>
+        </div>
+      </div>
+
+      <div class="footer">
+        Generated by UC1 Hard Harness &mdash; LLMWiki Agent System &mdash; 2026-05-19
+        <br>Customer ID: bcbs-mn-001
+      </div>
+    </body>
+    </html>
