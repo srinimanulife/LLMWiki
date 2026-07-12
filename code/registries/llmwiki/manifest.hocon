@@ -8,5 +8,7 @@
 
 {
     "uc1_sales_to_service.hocon": true,
-    "uc_pm_problem_management.hocon": true
+    "uc_pm_problem_management.hocon": true,
+    "uc_test_hello.hocon": true,
+    "uc_travel_booking.hocon": true
 }

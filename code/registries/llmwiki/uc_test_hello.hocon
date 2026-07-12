@@ -1,0 +1,78 @@
+# LLMWiki — Test Use Case (local dev, no Lambda required)
+# A minimal 2-agent network: FrontMan + one stub CodedTool
+# Use this to verify the local Docker stack works end-to-end.
+
+include "registries/aaosa.hocon",
+include "config/llm_config.hocon",
+
+"tools": [
+
+    # ─── FrontMan ───────────────────────────────────────────────────
+    {
+        "name": "TestHelloAgent",
+
+        "function": {
+            "description": "A test agent that greets the user and echoes back a summary using a stub tool. Tell me your name and what you want to test."
+        },
+
+        "instructions": """
+You are a simple test agent for the LLMWiki local development environment.
+Your job is to confirm the Neuro SAN stack is working end-to-end.
+
+When the user sends any message:
+STEP 1 — Call EchoTool with these named fields:
+  message = the user's message
+  user_name = any name the user mentioned, or "tester" if none given
+
+STEP 2 — Report back to the user:
+  - Confirm EchoTool responded successfully
+  - Show the echo result
+  - State: "Local Neuro SAN stack is working correctly."
+
+Keep responses short and clear. This is a connectivity test.
+""" ${aaosa_instructions},
+
+        "tools": ["EchoTool"]
+    },
+
+    # ─── Stub Tool (no Lambda — pure Python) ────────────────────────
+    {
+        "name": "EchoTool",
+
+        "function": ${aaosa_call}{
+            "description": "Echoes back the message with a timestamp and confirmation. Pass message and user_name as named fields.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "The message to echo back"
+                    },
+                    "user_name": {
+                        "type": "string",
+                        "description": "The name of the user"
+                    }
+                },
+                "required": ["message"]
+            }
+        },
+
+        "instructions": """
+You are the EchoTool — a stub tool for local testing.
+You have no external dependencies (no Lambda, no AWS calls).
+
+When called:
+1. Acknowledge the message
+2. Return a structured confirmation
+
+Return:
+- echo: the original message repeated back
+- user_name: the user name passed in (or "tester")
+- status: "ok"
+- note: "EchoTool stub — no Lambda call made. Local stack verified."
+""",
+
+        "class": "coded_tools.llmwiki.echo_tool.EchoTool"
+    }
+
+]

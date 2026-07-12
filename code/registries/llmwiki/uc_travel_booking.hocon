@@ -1,0 +1,211 @@
+# LLMWiki — Travel Booking Agent Network (local demo)
+# Multi-agent: FrontMan + FlightSearch + HotelSearch + BookingConfirm
+# All coded tools are stubs — no external APIs needed.
+# Shows how to model a real use case with AAOSA locally.
+
+include "registries/aaosa.hocon",
+include "config/llm_config.hocon",
+
+"tools": [
+
+    # ─── FrontMan ───────────────────────────────────────────────────
+    {
+        "name": "TravelBookingAgent",
+
+        "function": {
+            "description": """
+I am your AI Travel Booking Agent. I can search for flights and hotels,
+compare options, and confirm a booking for you.
+Tell me your origin, destination, travel dates, and number of travellers.
+"""
+        },
+
+        "instructions": """
+You are a professional AI Travel Booking Agent.
+Your job is to help the user book flights and hotels for their trip.
+
+STEP 1 — Gather trip details.
+If the user hasn't provided all of the following, ask for them:
+  - origin city
+  - destination city
+  - departure date (format: YYYY-MM-DD)
+  - return date (format: YYYY-MM-DD) — or "one-way"
+  - number of travellers
+  - cabin class preference (economy / business / first) — default economy
+  - hotel preference (budget / mid-range / luxury) — default mid-range
+Once you have all details, proceed to Step 2 without asking again.
+
+STEP 2 — Call FlightSearchTool and HotelSearchTool IN PARALLEL.
+For FlightSearchTool pass these named fields:
+  origin          = origin city
+  destination     = destination city
+  departure_date  = departure date string
+  return_date     = return date string or "one-way"
+  passengers      = number of travellers as integer
+  cabin_class     = cabin class preference
+
+For HotelSearchTool pass these named fields:
+  city            = destination city
+  check_in        = departure date string
+  check_out       = return date string
+  guests          = number of travellers as integer
+  category        = hotel preference (budget / mid-range / luxury)
+
+STEP 3 — Present a summary of the best options found.
+Show:
+  ✈️  Top 3 flight options (airline, price, duration, stops)
+  🏨  Top 3 hotel options (name, price per night, rating, location)
+Ask the user: "Which flight and hotel would you like to book?
+Please reply with the flight number and hotel name."
+
+STEP 4 — When the user selects options, call BookingConfirmTool with:
+  flight_id   = the selected flight ID from search results
+  hotel_id    = the selected hotel ID from search results
+  passengers  = number of travellers
+  guest_name  = user's name if provided, otherwise "Guest"
+
+STEP 5 — Present the booking confirmation.
+Show the booking reference, total cost, and next steps.
+
+TONE: Friendly, efficient, professional. Always confirm details before booking.
+Never book without explicit user confirmation of the selected flight and hotel.
+""" ${aaosa_instructions},
+
+        "tools": [
+            "FlightSearchTool",
+            "HotelSearchTool",
+            "BookingConfirmTool"
+        ]
+    },
+
+    # ─── Flight Search (stub) ────────────────────────────────────────
+    {
+        "name": "FlightSearchTool",
+
+        "function": ${aaosa_call}{
+            "description": "Searches for available flights between two cities on given dates. Returns top flight options with price, duration, airline and stops. Pass origin, destination, departure_date, return_date, passengers, cabin_class as named fields.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "origin":         {"type": "string", "description": "Origin city or airport code"},
+                    "destination":    {"type": "string", "description": "Destination city or airport code"},
+                    "departure_date": {"type": "string", "description": "Departure date YYYY-MM-DD"},
+                    "return_date":    {"type": "string", "description": "Return date YYYY-MM-DD or one-way"},
+                    "passengers":     {"type": "string", "description": "Number of passengers (as a number)"},
+                    "cabin_class":    {"type": "string", "description": "economy / business / first"}
+                },
+                "required": ["origin", "destination", "departure_date", "passengers"]
+            }
+        },
+
+        "instructions": """
+You are the FlightSearchTool — a stub flight search engine for local testing.
+Generate realistic-looking flight options based on the search parameters.
+
+Given origin, destination, departure_date, passengers, cabin_class:
+1. Generate 3 realistic flight options with plausible airlines, prices, and durations
+2. Use realistic pricing (economy ~$300–800, business ~$1200–3000, first ~$3000–8000)
+3. Include a mix of direct and 1-stop options
+4. Generate plausible flight IDs like FL-001, FL-002, FL-003
+
+Return:
+- status: "ok"
+- flights: list of 3 options each with:
+    flight_id, airline, flight_number, origin, destination,
+    departure_time, arrival_time, duration_hours, stops,
+    price_per_person, total_price (price × passengers), cabin_class
+- search_params: echo back the search parameters
+- note: "FlightSearchTool stub — simulated results for demo"
+""",
+
+        "class": "coded_tools.llmwiki.travel_search_tool.FlightSearchTool"
+    },
+
+    # ─── Hotel Search (stub) ─────────────────────────────────────────
+    {
+        "name": "HotelSearchTool",
+
+        "function": ${aaosa_call}{
+            "description": "Searches for available hotels in a city for given dates. Returns top hotel options with price, rating, and location. Pass city, check_in, check_out, guests, category as named fields.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "city":      {"type": "string",  "description": "Destination city"},
+                    "check_in":  {"type": "string",  "description": "Check-in date YYYY-MM-DD"},
+                    "check_out": {"type": "string",  "description": "Check-out date YYYY-MM-DD"},
+                    "guests":    {"type": "string",  "description": "Number of guests (as a number)"},
+                    "category":  {"type": "string",  "description": "budget / mid-range / luxury"}
+                },
+                "required": ["city", "check_in", "check_out", "guests"]
+            }
+        },
+
+        "instructions": """
+You are the HotelSearchTool — a stub hotel search engine for local testing.
+Generate realistic-looking hotel options based on the search parameters.
+
+Given city, check_in, check_out, guests, category:
+1. Calculate number of nights from check_in to check_out
+2. Generate 3 realistic hotel options appropriate for the category:
+   - budget: $60–120/night, 3-star, city-centre or suburban
+   - mid-range: $120–250/night, 4-star, good location
+   - luxury: $300–700/night, 5-star, premium location
+3. Generate plausible hotel IDs like HTL-001, HTL-002, HTL-003
+
+Return:
+- status: "ok"
+- hotels: list of 3 options each with:
+    hotel_id, name, category, stars, city, neighbourhood,
+    price_per_night, total_price (price × nights), rating (out of 5),
+    amenities (list of 3–5), check_in, check_out, nights
+- search_params: echo back the search parameters
+- note: "HotelSearchTool stub — simulated results for demo"
+""",
+
+        "class": "coded_tools.llmwiki.travel_search_tool.HotelSearchTool"
+    },
+
+    # ─── Booking Confirmation (stub) ─────────────────────────────────
+    {
+        "name": "BookingConfirmTool",
+
+        "function": ${aaosa_call}{
+            "description": "Confirms a travel booking for the selected flight and hotel. Returns booking reference, total cost, and confirmation details. Pass flight_id, hotel_id, passengers, guest_name as named fields.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "flight_id":  {"type": "string",  "description": "Flight ID from search results"},
+                    "hotel_id":   {"type": "string",  "description": "Hotel ID from search results"},
+                    "passengers": {"type": "string",  "description": "Number of passengers (as a number)"},
+                    "guest_name": {"type": "string",  "description": "Primary guest name"}
+                },
+                "required": ["flight_id", "hotel_id", "passengers"]
+            }
+        },
+
+        "instructions": """
+You are the BookingConfirmTool — a stub booking confirmation engine for local testing.
+Generate a realistic booking confirmation based on the selected flight and hotel.
+
+Given flight_id, hotel_id, passengers, guest_name:
+1. Generate a realistic booking reference (e.g. TRV-2026-XXXXX)
+2. Confirm the booking details
+3. Calculate a realistic total cost
+
+Return:
+- status: "confirmed"
+- booking_ref: unique reference like "TRV-2026-48291"
+- guest_name: the primary guest name
+- flight_confirmation: flight_id + confirmation number (e.g. "BA-8821047")
+- hotel_confirmation: hotel_id + confirmation number (e.g. "HTL-9934821")
+- total_flight_cost: realistic amount
+- total_hotel_cost: realistic amount
+- grand_total: sum of both
+- next_steps: list of 3 action items (e.g. check-in online, pack documents, etc.)
+- note: "BookingConfirmTool stub — simulated confirmation for demo"
+""",
+
+        "class": "coded_tools.llmwiki.travel_search_tool.BookingConfirmTool"
+    }
+
+]
