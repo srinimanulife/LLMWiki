@@ -5,6 +5,24 @@ without touching any ECS deployment.
 
 ---
 
+## Quick Reference — Rules That Will Burn You If You Forget
+
+Learned the hard way building `uc_travel_booking`. Memorise these before you
+write a single line of HOCON.
+
+| # | Rule | What happens if you break it |
+|---|---|---|
+| 1 | Never use `"type": "integer"` in parameters | Silent `UndefinedType` pydantic crash — network skipped, no useful error message |
+| 2 | Always include `"required": [...]` in every sub-agent parameters block | base aaosa_call injects `["inquiry","mode"]`; without override your required list stays as those two fields → same UndefinedType crash |
+| 3 | Push to S3 **before** `docker cp`, never after | `sync_registries.sh` pulls from S3 every 3 s and will overwrite your docker cp with the old S3 version |
+| 4 | Set `-e AGENT_TOOL_PATH=/app/coded_tools` on `docker run` | neuro-san scans its own package dir and fails to find any of your coded tools |
+| 5 | nsflow WebSocket message format is `{"message": "...", "sly_data": {}}` | Sending `{"user_input": "..."}` (neuro-san direct API) gives a 120 s silence then timeout |
+| 6 | Test scripts run inside the container use port 4173 (nsflow) or 8080 (neuro-san), not the host-mapped ports 14175/18082 | Connection refused inside container when you use host ports |
+| 7 | Don't add `${aaosa_call}` to the FrontMan agent | FrontMan has no parameters — HOCON merge will produce a parameters block with only inquiry+mode and break validation |
+| 8 | Coded tool changes (new `.py` files) are NOT picked up by S3 sync | Only HOCON files sync from S3; coded tools need `docker cp` or a full image rebuild |
+
+---
+
 ## Overview
 
 The local stack runs two processes inside one container:
@@ -335,46 +353,512 @@ These changes require a full image rebuild + container restart:
 
 ---
 
-## 10. Add a New Use Case Locally
+## 10. Case Study — Building `uc_travel_booking` (What Went Wrong and Why)
 
-1. **Write the HOCON** in `code/registries/llmwiki/uc_my_usecase.hocon`
+This section walks through every error hit while building the travel booking use
+case. Read it before building your own use case — each mistake costs 5–10 minutes
+of debugging and log-reading.
 
-2. **Write the coded tool** in `code/neuro_san/coded_tools/llmwiki/my_tool.py`
-   extending `CodedTool`:
-   ```python
-   from neuro_san.interfaces.coded_tool import CodedTool
+### What we were building
 
-   class MyTool(CodedTool):
-       async def async_invoke(self, args, sly_data):
-           return {"status": "ok", "result": args.get("input", "")}
-   ```
+A 4-agent AAOSA network:
 
-3. **Add to manifest** in `code/registries/llmwiki/manifest.hocon`:
-   ```hocon
-   { ..., "uc_my_usecase.hocon": true }
-   ```
+```
+User → TravelBookingAgent (FrontMan)
+           ├── FlightSearchTool   (stub, returns 3 flight options)
+           ├── HotelSearchTool    (stub, returns 3 hotel options)
+           └── BookingConfirmTool (stub, returns a booking reference)
+```
 
-4. **Copy tool into running container** (tool changes require container-side copy
-   since `sync_registries.sh` only syncs `registries/`, not `coded_tools/`):
-   ```bash
-   docker cp code/neuro_san/coded_tools/llmwiki/my_tool.py \
-       llmwiki-ns-test:/app/coded_tools/llmwiki/my_tool.py
-   ```
+All coded tools are pure Python stubs — no Lambda, no external API — so the
+entire network runs locally without AWS Bedrock being involved beyond the LLM
+calls made by the neuro-san AAOSA engine itself.
 
-5. **Push HOCON + manifest to S3**:
-   ```bash
-   aws s3 sync code/registries/llmwiki/ \
-       s3://llmwiki-278e7e22/neuro-san/registries/llmwiki/ \
-       --profile tzg-sandbox
-   ```
+---
 
-6. **Confirm reload** in logs:
-   ```bash
-   docker logs llmwiki-ns-test --tail=5
-   # ADDED network for agent uc_my_usecase : ...
-   ```
+### Problem 1 — `"type": "integer"` causes silent validation failure
 
-7. **Test via nsflow** at `http://localhost:14175/` or with a Python WebSocket script.
+**What we wrote:**
+```hocon
+"passengers": {"type": "integer", "description": "Number of passengers"}
+```
+
+**Error in logs:**
+```
+manifest registry uc_travel_booking.hocon has validation errors. Skipping.
+  FlightSearchTool: pydantic model conversion failed - no validator found
+  for <class 'pydantic.v1.fields.UndefinedType'>, see `arbitrary_types_allowed`
+```
+
+**Why it happens:**
+neuro-san's internal converter (`BaseModelDictionaryConverter`) uses a hard-coded
+`TYPE_LOOKUP` dictionary. It maps `"string"` → `str`, `"int"` → `int`, etc.
+The string `"integer"` (standard JSON Schema) is **not in that lookup**. When the
+converter calls `TYPE_LOOKUP.get("integer")` it gets `None`. Pydantic v1 then
+receives a `None` type which resolves to `UndefinedType` — a sentinel that
+pydantic uses for "not set yet" — and crashes.
+
+The error message mentions `UndefinedType` but doesn't say which field or which
+type string caused it, making it hard to diagnose without reading the source.
+
+**Fix:**
+```hocon
+"passengers": {"type": "string", "description": "Number of passengers (as a number)"}
+```
+
+Cast in the coded tool:
+```python
+passengers = int(args.get("passengers", 1))
+```
+
+**Caution:** This is easy to miss because `"integer"` is completely valid JSON
+Schema and works in OpenAI tool definitions. neuro-san's pydantic layer predates
+standard JSON Schema and uses its own shorter type names.
+
+---
+
+### Problem 2 — Omitting `"required"` leaves inquiry+mode as required fields
+
+**What we wrote (first attempt to fix Problem 1):**
+We removed the `"required"` array entirely, thinking it would make all fields
+optional and avoid the crash.
+
+**Error in logs (same crash, different cause):**
+```
+FlightSearchTool: pydantic model conversion failed - no validator found
+for <class 'pydantic.v1.fields.UndefinedType'>
+```
+
+**Why it happens:**
+The HOCON substitution `${aaosa_call}{...}` merges your function block with the
+base `aaosa_call` definition. After HOCON parsing the `FlightSearchTool.function`
+object contains:
+
+```json
+{
+  "description": "...",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "inquiry": {"type": "string"},
+      "mode":    {"type": "string"},
+      "origin":  {"type": "string"},
+      ...
+    },
+    "required": ["inquiry", "mode"]   ← base aaosa_call's required, still present
+  }
+}
+```
+
+The `"required"` array is **additive in HOCON object merge only when both sides
+have different keys**. An array is replaced wholesale by the overriding value.
+Because we provided no `"required"` key at all in our override, the base
+`["inquiry", "mode"]` survived unchanged. Pydantic then creates `inquiry` and
+`mode` as required fields (no `default=None`) but our properties contained
+`origin`, `destination`, etc. — not `inquiry` / `mode` — so pydantic gets
+`None` type for those required fields → `UndefinedType`.
+
+**Fix:** Always include a `"required"` array in every sub-agent's parameters
+override. It replaces the base `["inquiry", "mode"]`:
+
+```hocon
+"parameters": {
+    "type": "object",
+    "properties": {
+        "origin":      {"type": "string", "description": "Origin city"},
+        "destination": {"type": "string", "description": "Destination city"},
+        "departure_date": {"type": "string", "description": "Departure date YYYY-MM-DD"},
+        "passengers":  {"type": "string", "description": "Number of passengers"}
+    },
+    "required": ["origin", "destination", "departure_date", "passengers"]
+}
+```
+
+---
+
+### Problem 3 — S3 sync silently overwrote the fixed container file
+
+**What happened:**
+After fixing Problems 1 and 2 in the local file and running `docker cp` to push
+the fixed HOCON into the container, the container logs still showed the old error.
+Checking the file inside the container revealed `"type": "integer"` was back.
+
+**Why it happens:**
+`sync_registries.sh` runs `aws s3 sync` every 3 seconds and pulls from S3 into
+`/app/registries/`. The S3 object still had the old version. So 3 seconds after
+our `docker cp`, the sync loop overwrote the container file with the stale S3 version.
+
+**Fix:**
+Always do both operations in order:
+```bash
+# 1. Push to S3 first
+aws s3 cp code/registries/llmwiki/uc_travel_booking.hocon \
+    s3://llmwiki-278e7e22/neuro-san/registries/llmwiki/uc_travel_booking.hocon \
+    --profile tzg-sandbox
+
+# 2. Then docker cp for immediate effect (optional — S3 sync will also do it within 3s)
+docker cp code/registries/llmwiki/uc_travel_booking.hocon \
+    llmwiki-ns-test:/app/registries/llmwiki/uc_travel_booking.hocon
+```
+
+Never the other order.
+
+---
+
+### Problem 4 — Wrong WebSocket endpoint and message format
+
+**What we tried first:**
+```python
+uri = "ws://localhost:18082/v1/streaming_agent"
+await ws.send(json.dumps({"agent_network_name": "uc_travel_booking", "request": {"user_input": question}}))
+```
+
+**Error:** `HTTP 404` — the path doesn't exist.
+
+**Then tried (still wrong):**
+```python
+uri = f"ws://localhost:14175/api/v1/ws/chat/{agent}/{sid}"
+await ws.send(json.dumps({"user_input": question}))
+```
+
+This connected successfully but received 0 messages even after 120 seconds.
+nsflow accepted the WebSocket but the `handle_user_input` method reads the
+`"message"` key — not `"user_input"` — so the query was silently discarded.
+
+**Why it's confusing:**
+- Port `18082` → neuro-san's raw HTTP/WS API (not the same as nsflow)
+- Port `14175` → nsflow's FastAPI backend
+- nsflow is the correct entry point for interactive chat
+- nsflow's raw neuro-san call is on the **internal** port 8080, not the host port 18082
+- nsflow expects `{"message": "...", "sly_data": {}}` not `{"user_input": "..."}`
+
+**Fix:** Always use the nsflow endpoint with the correct message format:
+```python
+uri = f"ws://localhost:14175/api/v1/ws/chat/{agent_name}/{session_id}"
+await ws.send(json.dumps({"message": question, "sly_data": {}}))
+```
+
+When running a test script **inside** the container (via `docker exec`), use the
+internal port instead:
+```python
+uri = f"ws://localhost:4173/api/v1/ws/chat/{agent_name}/{session_id}"
+```
+
+---
+
+### Summary — Travel Booking Debugging Timeline
+
+| Step | What we did | Time wasted |
+|---|---|---|
+| Wrote initial HOCON with `"integer"` types | Seemed reasonable, standard JSON Schema | — |
+| Saw `UndefinedType` error | Didn't recognise it as a type-name issue | 10 min |
+| Changed to `"string"`, removed `"required"` | Fixed one bug, introduced another | 5 min |
+| Same `UndefinedType` error, different cause | Had to read neuro-san source to understand | 15 min |
+| Added back `"required"` with domain fields | Fixed crash | — |
+| HOCON still showing old `"integer"` in container | S3 sync overwrote docker cp | 10 min |
+| Fixed deploy order (S3 first, then cp) | Network loaded | — |
+| Wrong WS path / message format | Two rounds of 120 s timeouts | 5 min |
+| Used correct nsflow path + `{"message":...}` | End-to-end test passed | — |
+
+Total time that could have been saved with this document: **~45 minutes**.
+
+---
+
+## 11. Step-by-Step Guide — Adding a New Use Case
+
+This is the authoritative checklist. Follow it in order. Do not skip steps.
+
+### Step 0 — Plan before you code
+
+Sketch the agent graph on paper first:
+
+```
+User → FrontManAgent
+          ├── ToolA   (what inputs does it need? what does it return?)
+          ├── ToolB
+          └── ToolC
+```
+
+For each sub-agent tool decide:
+- What fields does the FrontMan pass in? (these become `"parameters"`)
+- What does the coded tool return? (this becomes context for the next step)
+- Does it need a real Lambda, or can it be a stub first?
+
+Start with stubs. Validate the AAOSA graph works before wiring real lambdas.
+
+---
+
+### Step 1 — Write the coded tool(s)
+
+File location: `code/neuro_san/coded_tools/llmwiki/my_tool.py`
+
+```python
+from typing import Any, Dict, Union
+from neuro_san.interfaces.coded_tool import CodedTool
+
+class MyTool(CodedTool):
+    async def async_invoke(
+        self,
+        args: Dict[str, Any],
+        sly_data: Dict[str, Any],
+    ) -> Union[Dict[str, Any], str]:
+        # Always use .get() with a default — never args["field"]
+        field_a = args.get("field_a", "")
+        count   = int(args.get("count", 1))   # cast string → int here
+
+        return {
+            "status": "ok",
+            "result": f"Processed {field_a} x{count}",
+        }
+```
+
+**Cautions:**
+- Use `args.get("field", default)` — never `args["field"]`. The AAOSA engine may
+  omit optional fields entirely.
+- Cast numeric args in Python (`int(args.get(...))`) not in HOCON (`"type": "integer"`).
+- Return a plain `dict` or `str`. Do not raise exceptions for missing optional
+  fields — return an error key in the dict instead.
+
+---
+
+### Step 2 — Write the HOCON
+
+File location: `code/registries/llmwiki/uc_my_usecase.hocon`
+
+**FrontMan template:**
+```hocon
+include "registries/aaosa.hocon",
+include "config/llm_config.hocon",
+
+"tools": [
+    {
+        "name": "MyFrontManAgent",
+
+        "function": {
+            "description": "I am the MyUseCase agent. Tell me X and I will Y."
+        },
+
+        "instructions": """
+You are the MyFrontManAgent.
+
+STEP 1 — Gather required information from the user.
+STEP 2 — Call MyTool with these named fields:
+  field_a = ...
+  count   = ...
+STEP 3 — Present the result.
+""" ${aaosa_instructions},
+
+        "tools": ["MyTool"]
+    },
+```
+
+**Sub-agent template:**
+```hocon
+    {
+        "name": "MyTool",
+
+        "function": ${aaosa_call}{
+            "description": "Does X given field_a and count. Pass field_a and count as named fields.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "field_a": {"type": "string", "description": "The primary input"},
+                    "count":   {"type": "string", "description": "How many times (as a number)"}
+                },
+                "required": ["field_a", "count"]
+            }
+        },
+
+        "instructions": """
+You are MyTool.
+Given field_a and count, do X and return a structured result.
+""",
+
+        "class": "coded_tools.llmwiki.my_tool.MyTool"
+    }
+
+]
+```
+
+**Cautions at this step:**
+- ❌ Do NOT use `"type": "integer"` — use `"type": "string"` for all numeric params.
+- ❌ Do NOT omit the `"required": [...]` array from any sub-agent's parameters.
+- ❌ Do NOT add `${aaosa_call}` to the FrontMan function block.
+- ✅ The `"class"` path must match exactly: `coded_tools.llmwiki.<filename>.<ClassName>`.
+- ✅ All sub-agents must appear in the same `"tools"` array.
+
+---
+
+### Step 3 — Add to manifest
+
+File: `code/registries/llmwiki/manifest.hocon`
+
+```hocon
+{
+    "uc1_sales_to_service.hocon":     true,
+    "uc_pm_problem_management.hocon": true,
+    "uc_test_hello.hocon":            true,
+    "uc_travel_booking.hocon":        true,
+    "uc_my_usecase.hocon":            true    ← add this line
+}
+```
+
+---
+
+### Step 4 — Pre-flight validation (before touching the container)
+
+Run the pydantic validator locally without starting a container. This catches
+type errors and missing required fields in under 1 second:
+
+```bash
+docker exec llmwiki-ns-test python3 - << 'EOF'
+import sys
+sys.path.insert(0, '/app')
+from leaf_common.config.config_handler import ConfigHandler
+from neuro_san.internals.graph.filters.network_config_filter_chain import NetworkConfigFilterChain
+from neuro_san.internals.run_context.langchain.core.base_model_dictionary_converter import BaseModelDictionaryConverter
+
+raw      = ConfigHandler().import_config('/app/registries/llmwiki/uc_my_usecase.hocon')
+filtered = NetworkConfigFilterChain().filter_config(raw)
+
+for tool in filtered.get('tools', []):
+    name   = tool.get('name', '')
+    params = tool.get('function', {}).get('parameters')
+    if not params or not isinstance(params, dict):
+        print(f"  {name}: no parameters (FrontMan or external)")
+        continue
+    try:
+        BaseModelDictionaryConverter('parameters').from_dict(params)
+        print(f"  ✅ {name}: OK")
+    except Exception as e:
+        print(f"  ❌ {name}: {e}")
+EOF
+```
+
+> Copy the HOCON into the container first: `docker cp code/registries/llmwiki/uc_my_usecase.hocon llmwiki-ns-test:/app/registries/llmwiki/uc_my_usecase.hocon`
+
+All tools should print ✅ before proceeding. Fix any ❌ before the next step.
+
+---
+
+### Step 5 — Deploy to running container
+
+**Always in this order:**
+
+```bash
+# 1. Push HOCON + manifest to S3
+aws s3 sync code/registries/llmwiki/ \
+    s3://llmwiki-278e7e22/neuro-san/registries/llmwiki/ \
+    --profile tzg-sandbox --region us-east-1
+
+# 2. Copy coded tool into container (S3 sync does NOT cover coded_tools/)
+docker cp code/neuro_san/coded_tools/llmwiki/my_tool.py \
+    llmwiki-ns-test:/app/coded_tools/llmwiki/my_tool.py
+
+# 3. Copy HOCON directly for immediate effect (S3 sync will also do this in ~3s)
+docker cp code/registries/llmwiki/uc_my_usecase.hocon \
+    llmwiki-ns-test:/app/registries/llmwiki/uc_my_usecase.hocon
+docker cp code/registries/llmwiki/manifest.hocon \
+    llmwiki-ns-test:/app/registries/llmwiki/manifest.hocon
+```
+
+**Why this order matters:** If you do `docker cp` before pushing S3, the
+`sync_registries.sh` loop will overwrite your container file with the old S3
+version within 3 seconds. S3 first, always.
+
+---
+
+### Step 6 — Confirm the network loaded
+
+```bash
+docker logs llmwiki-ns-test --tail=15
+```
+
+**Success looks like:**
+```
+Validating uc_my_usecase agent network...
+ADDED network for agent uc_my_usecase : 127759173735760
+```
+
+**Failure looks like:**
+```
+Validating uc_my_usecase agent network...
+manifest registry uc_my_usecase.hocon has validation errors. Skipping. Errors: [
+    "MyTool: pydantic model conversion failed - ..."
+]
+```
+
+If you see failure, go back to Step 4 (pre-flight validation) to identify the
+specific parameter causing the error.
+
+Also confirm via the list endpoint:
+```bash
+curl http://localhost:14175/api/v1/list | python3 -m json.tool
+```
+
+---
+
+### Step 7 — Test end-to-end
+
+Save as `/tmp/test_my_usecase.py` and run inside the container:
+
+```python
+import asyncio, json, uuid, websockets
+
+async def main():
+    agent = "uc_my_usecase"
+    sid   = uuid.uuid4().hex[:10]
+    uri   = f"ws://localhost:4173/api/v1/ws/chat/{agent}/{sid}"
+    query = "Your test query here with all required information."
+
+    print(f"Testing {agent}")
+    async with websockets.connect(uri, ping_interval=60, ping_timeout=120) as ws:
+        await ws.send(json.dumps({"message": query, "sly_data": {}}))
+        while True:
+            raw  = await asyncio.wait_for(ws.recv(), timeout=120)
+            msg  = json.loads(raw)
+            text = (msg.get("message") or {}).get("text", "")
+            if text:
+                print(text)
+                break
+
+asyncio.run(main())
+```
+
+```bash
+docker cp /tmp/test_my_usecase.py llmwiki-ns-test:/tmp/test_my_usecase.py
+docker exec llmwiki-ns-test python3 /tmp/test_my_usecase.py
+```
+
+---
+
+### Step 8 — Commit and push to GitHub
+
+```bash
+cd /path/to/LLMWiki
+git add \
+    code/registries/llmwiki/uc_my_usecase.hocon \
+    code/registries/llmwiki/manifest.hocon \
+    code/neuro_san/coded_tools/llmwiki/my_tool.py
+git commit -m "Add uc_my_usecase agent network with MyTool stub"
+git push origin main
+```
+
+---
+
+### Common mistakes checklist
+
+Before asking "why isn't my network loading?", go through this list:
+
+- [ ] No `"type": "integer"` anywhere in parameters — changed to `"string"`?
+- [ ] Every sub-agent parameters block has a `"required": [...]` array?
+- [ ] FrontMan does **not** have `${aaosa_call}` in its function block?
+- [ ] The `"class"` path matches the actual Python module path and class name exactly?
+- [ ] S3 was pushed **before** `docker cp` (not after)?
+- [ ] Coded tool was copied into the container with `docker cp` (S3 sync won't do it)?
+- [ ] Logs show `ADDED network for agent ...` (not `validation errors. Skipping`)?
+- [ ] Test script runs **inside** the container on port 4173 (not on host port 14175)?
+- [ ] WebSocket message is `{"message": "...", "sly_data": {}}` (not `user_input`)?
 
 ---
 
