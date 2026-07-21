@@ -59,10 +59,71 @@ Keep this file open on one screen. LinkedIn on the other.
 
 ---
 
+## How Playwright MCP Helps for W2 (No Login Needed)
+
+> ✅ **You already logged in during Week 1's Step 0.**
+> The Playwright MCP uses the persistent profile at `~/.playwright-linkedin-profile`
+> — your LinkedIn session is still there. Claude opens LinkedIn already logged in.
+> **You never need to run the login command again.**
+
+You have two paths. **Path A uses Claude + Playwright MCP** (recommended).
+**Path B is manual** — use it if the browser window doesn't appear.
+
+---
+
+### Path A — Claude Pre-fills LinkedIn for You (Recommended)
+
+**In your Claude Code terminal, type:**
+
+```
+/linkedin-week
+```
+
+Claude reads the sprint plan, identifies W2 (Wed Jul 23 — today), and shows you the post package.
+Then it asks:
+
+```
+Open LinkedIn and pre-fill the composer? (yes / no)
+```
+
+**Type: yes**
+
+**What you will see happen (Claude drives, you watch):**
+1. A Chromium browser window opens on your screen
+2. Your LinkedIn home feed loads — already logged in, no password required
+3. Claude clicks **"Start a post"**
+4. Claude clicks the **📄 Document icon** (not the Photo icon — this is the carousel upload path)
+5. Claude attaches `linkedin/linkedin_w2_carousel.pdf`
+6. Claude fills in the document title: `LLMWiki AWS Architecture — Why We Chose S3 Vectors Over OpenSearch`
+7. Claude pastes the full post text into the composer
+8. **Claude stops. The Post button is not clicked.**
+9. In your terminal:
+   ```
+   ✅ LinkedIn composer is ready.
+   Check: carousel preview shows 1/8 slides.
+   Check: hook line is "We saved $400/month..."
+   Click Post when you are happy.
+   Come back here and say "posted".
+   ```
+
+**You review the browser:**
+- Does the carousel preview show Slide 1 with "1 / 8" indicator? ✓
+- Is the first line of text "We saved $400/month on day one..."? ✓
+- Are there no URLs in the post body? ✓
+- Click **Post** when ready
+
+> ✅ **Claude never clicks Post for you.** You are always the publisher.
+
+After clicking Post, come back to Claude Code and type **"posted"** — Claude gives you the first comment text immediately.
+
+---
+
+### Path B — Manual Posting (if the browser window does not open)
+
 ### Step 3 — Open LinkedIn
 
 1. Go to **linkedin.com** in your browser
-2. Log in if needed
+2. Log in if needed (should already be logged in from W1)
 3. You should see your home feed — the stream of posts from people you follow
 
 **You should see this at the top of the feed:**

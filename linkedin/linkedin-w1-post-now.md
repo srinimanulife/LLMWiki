@@ -18,8 +18,88 @@
 | First comment | ✅ Below | Copy from this file |
 
 > Week 1 is a **regular Post + Image** — no PDF, no carousel, no special upload.
-> The simplest format on LinkedIn. This is intentional: learn the basics on Week 1,
-> add carousel complexity on Week 2.
+
+---
+
+## How the MCP Setup Helps You (Read This First)
+
+You have two MCP servers running inside Claude Code:
+
+```
+filesystem  ✔  Reads linkedin/ files → Claude knows your post text, image, schedule
+playwright  ✔  Controls a real Chromium browser → Claude pre-fills LinkedIn for you
+```
+
+**What this means for Week 1:**
+
+| Without MCP | With MCP |
+|---|---|
+| You open a browser manually | Claude opens LinkedIn for you |
+| You copy-paste post text | Claude pastes it into the composer |
+| You pick the image file | Claude attaches it for you |
+| You hunt for the first comment text | Claude gives it to you post-publish |
+| You remember when to post | `/linkedin-week` finds today's post automatically |
+
+You still click **Post** yourself — Claude stops and waits for your review.
+You are always in control. Claude just removes all the friction.
+
+---
+
+## Step 0 — One-Time LinkedIn Login in the Playwright Browser (Do This Once, Ever)
+
+> ⚠️ **This is the only time you will ever need to log into LinkedIn manually.**
+> After this step, Claude reuses your saved session for every week's post — W1 through W12
+> and beyond. You will never be asked to log in again unless you clear the profile.
+
+The Playwright MCP uses a persistent browser profile stored at:
+`~/.playwright-linkedin-profile`
+
+This profile is empty right now. LinkedIn has never seen it. You need to log in once
+to save your cookies into it.
+
+**How to do it — run this in your terminal:**
+
+```bash
+export PATH="$HOME/.npm-global/bin:$PATH"
+npx playwright open --browser chromium \
+  --user-data-dir ~/.playwright-linkedin-profile \
+  https://www.linkedin.com
+```
+
+> ℹ️ **What happens:** A Chromium browser window opens on your screen
+> (via WSLg — the same display system your WSL2 uses for GUI apps).
+> It opens linkedin.com.
+
+**In the browser window that opens:**
+1. Type your LinkedIn email and password
+2. Click **Sign in**
+3. If LinkedIn shows a **verification code** screen (2FA):
+   - Check your email or phone for the code
+   - Type it in and click **Verify**
+4. You should now see your LinkedIn home feed — the post stream
+5. **Close the browser window**
+
+That is it. LinkedIn session is now saved to `~/.playwright-linkedin-profile`.
+Every time Claude opens a browser through the Playwright MCP, it opens this same profile —
+already logged in.
+
+**Verify it worked:**
+Run the same command again:
+```bash
+npx playwright open --browser chromium \
+  --user-data-dir ~/.playwright-linkedin-profile \
+  https://www.linkedin.com
+```
+If you see your LinkedIn feed immediately (no login screen) → session saved correctly.
+Close the browser.
+
+> ⚠️ **If you see the login screen again:** The session didn't save. This can happen if
+> LinkedIn forced a full logout. Just log in again — it will save this time.
+
+> ⚠️ **If the browser window doesn't appear at all:** WSLg may not be running.
+> Check that your Windows WSL2 is up to date (`wsl --update` from Windows PowerShell).
+> Alternatively, use the manual posting path (Step 3b below) — everything still works,
+> you just paste text yourself instead of having Claude paste it.
 
 ---
 
@@ -138,9 +218,60 @@ Send the messages, then come back here and continue.
 
 ## Posting — The Exact Sequence
 
+You have two paths. **Path A uses Claude + Playwright MCP** (recommended).
+**Path B is manual** — use it if the browser window doesn't appear.
+
+---
+
+### Path A — Claude Pre-fills LinkedIn for You (Recommended)
+
+**In your Claude Code terminal, type:**
+
+```
+/linkedin-week
+```
+
+Claude reads the sprint plan, finds Week 1, and shows you the full post package.
+Then it asks:
+
+```
+Open LinkedIn and pre-fill the composer? (yes / no)
+```
+
+**Type: yes**
+
+**What you will see happen (Claude drives, you watch):**
+1. A Chromium browser window opens on your screen
+2. Your LinkedIn home feed loads — already logged in from Step 0
+3. Claude clicks **"Start a post"**
+4. Claude pastes the full post text into the composer
+5. Claude clicks the photo icon and attaches `linkedin_w1_the_problem.png`
+6. **Claude stops. The Post button is not clicked.**
+7. In your terminal:
+   ```
+   ✅ LinkedIn composer is ready.
+   Review the text and image in the browser.
+   Click Post when you are happy with it.
+   Come back here after posting and say "posted".
+   ```
+
+**You review the browser:**
+- Read the post text — does the hook appear first before "...see more"?
+- Check the image preview — dark background, split panel, AWS flow, five pillars?
+- Click **Post** when ready
+
+> ✅ **Claude never clicks Post for you.** You are always the publisher.
+
+After clicking Post, come back to Claude Code and type **"posted"** — Claude will
+give you the first comment text to paste immediately.
+
+---
+
+### Path B — Manual Posting (if the browser window does not open)
+
 ### Step 1 — Open the post composer
 
-1. Go to **linkedin.com**
+1. Go to **linkedin.com** in your own browser
 2. At the top of the feed you'll see a box that says **"Start a post"**
 3. Click it — a composer window opens
 
