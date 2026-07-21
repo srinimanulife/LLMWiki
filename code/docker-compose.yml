@@ -12,6 +12,22 @@
 
 services:
 
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: llmwiki-phoenix
+    ports:
+      - "6006:6006"   # Phoenix UI + REST API
+      - "4317:4317"   # gRPC OTLP collector
+      - "4318:4318"   # HTTP OTLP collector
+    environment:
+      - PHOENIX_WORKING_DIR=/phoenix
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:6006/v1/projects"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
   neuro-san:
     build:
       context: .
@@ -27,8 +43,13 @@ services:
       - AWS_PROFILE=${AWS_PROFILE:-tzg-sandbox}
       - AGENT_MANIFEST_FILE=registries/llmwiki/manifest.hocon
       - AGENT_MANIFEST_UPDATE_PERIOD_SECONDS=5
+      # Phoenix OTel endpoint — traces go to phoenix sidecar via docker network DNS
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:4318
     volumes:
       - ~/.aws:/root/.aws:ro
+    depends_on:
+      phoenix:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/livez"]
       interval: 10s
@@ -50,6 +71,9 @@ services:
       - AWS_PROFILE=${AWS_PROFILE:-tzg-sandbox}
       # Point at the neuro-san sidecar by service name (docker network DNS)
       - NSFLOW_LOCAL_URL=http://neuro-san:4173
+      # Phoenix — internal connection for REST API calls, browser URL for iframe
+      - PHOENIX_ENDPOINT=http://phoenix:6006
+      - PHOENIX_BROWSER_URL=http://localhost:6006
     volumes:
       - ~/.aws:/root/.aws:ro
     depends_on:

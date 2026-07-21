@@ -1,10 +1,13 @@
 # LLMWiki — LLM Configuration
-# Uses AWS Bedrock with Claude Sonnet 4.6 (same model as all other LLMWiki Lambdas)
+# Uses AWS Bedrock cross-region inference profile for Claude Sonnet 4.5.
+# The us. prefix is required — newer Claude models need an inference profile,
+# not the bare on-demand model ID. neuro-san logs an "Unknown model" warning
+# for this ID but the Bedrock call succeeds normally.
 # AWS credentials are picked up from the ECS task role / local profile automatically.
 
 {
     "llm_config": {
         "class": "bedrock",
-        "model_name": "us.anthropic.claude-sonnet-4-6",
+        "model_name": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
     }
 }

@@ -1,0 +1,13 @@
+span_id,domain,confidence,question,has_answer,citation_present,confidence_calibrated,claude_label,nova_label,judges_agree,biz_api_label
+61c8dbe5e85f45ef,platform,medium,How does the LLMWiki handle concurrent agent write conflicts,pass,pass,pass,hallucinated,hallucinated,True,FAIL
+cfbf76083a54485d,,,What is the TriZetto audit log retention policy for HIPAA co,pass,fail,pass,,,,PASS
+916af53e19fa452b,provisioning,medium,What instance types are recommended for a TriZetto NetworX p,pass,pass,pass,hallucinated,faithful,False,FAIL
+b5a34fe4d9184da4,cutover,high,What are the go/no-go criteria before a Facets production cu,pass,pass,pass,hallucinated,hallucinated,True,FAIL
+f9a95aac9d3841f4,platform,high,What is LLMWiki governance and how does it affect agent perf,pass,pass,pass,hallucinated,hallucinated,True,FAIL
+74f805b8cd3e4bf6,identity-access,high,What is the RBAC matrix for a QNXT implementation delivery t,pass,pass,pass,hallucinated,hallucinated,True,FAIL
+d9e55780959e4332,handover,high,What does the customer education pack include for a QNXT go-,pass,pass,pass,hallucinated,hallucinated,True,FAIL
+d9add0c334914c46,hypercare,high,What monitoring thresholds trigger an escalation during Face,pass,pass,pass,hallucinated,hallucinated,True,FAIL
+7ee652a903e64ec8,data-migration,medium,What data quality checks are required before migrating membe,pass,pass,pass,hallucinated,hallucinated,True,FAIL
+d63aa04253c44518,testing,high,What are the required sign-off criteria for SIT completion o,pass,pass,pass,hallucinated,hallucinated,True,FAIL
+e2c72a1b8e824d11,provisioning,high,What are the ARB security requirements for a Facets environm,pass,pass,pass,hallucinated,hallucinated,True,FAIL
+9fd64e286aa8442d,customer-onboarding,high,What is the standard Sales-to-Service handoff checklist for ,pass,pass,pass,hallucinated,hallucinated,True,FAIL

@@ -28,6 +28,7 @@ SK03_FUNCTION     = os.environ.get("SK03_FUNCTION",     "llmwiki-skill-wiki-cont
 SK04_FUNCTION     = os.environ.get("SK04_FUNCTION",     "llmwiki-skill-artifact-resolution")
 SK05_FUNCTION     = os.environ.get("SK05_FUNCTION",     "llmwiki-skill-gap-detection")
 PLAYBOOK_FUNCTION = os.environ.get("PLAYBOOK_FUNCTION", "llmwiki-playbook")
+LOG_TABLE         = os.environ.get("LOG_TABLE",         "llmwiki-log")
 
 TTL_30_DAYS = 30 * 86400
 
@@ -132,6 +133,38 @@ def _write_workspace(engagement_id: str, file_path: str, content: str) -> None:
         })
     except Exception as exc:
         print(f"WARN: _write_workspace failed for {file_path}: {exc}")
+
+
+def _write_session_wrapup(
+    engagement_id: str,
+    run_id: str,
+    accumulated: dict,
+    outcome: str,
+    artifacts: list,
+    handoff: dict,
+) -> None:
+    now = datetime.now(timezone.utc)
+    date_str = now.strftime("%Y-%m-%d")
+    iso_str  = now.isoformat()
+    phases_completed = [k.replace("phase", "") for k in accumulated if k.startswith("phase")]
+    try:
+        table = dynamodb.Table(LOG_TABLE)
+        table.put_item(Item={
+            "log_date":          f"session#uc1-harness#{date_str}",
+            "timestamp_id":      f"{iso_str}#{run_id}",
+            "phases_completed":  phases_completed,
+            "phases_failed":     [],
+            "outcome":           outcome,
+            "artifacts_written": artifacts,
+            "handoff":           handoff,
+            "agent_id":          "UC1-SalesToServiceAgent",
+            "session_id":        run_id,
+            "engagement_id":     engagement_id,
+            "harness_version":   "v1.2",
+            "ttl":               int(time.time()) + (90 * 86400),
+        })
+    except Exception as exc:
+        print(f"WARN: _write_session_wrapup failed: {exc}")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -259,6 +292,9 @@ def lambda_handler(event: dict, context) -> dict:
         _update_harness_run(table, engagement_id, run_id,
                              {"status": "running", "current_phase": 3})
         accumulated = {"phase1": phase1, "phase2": phase2}
+        phase3 = phase4 = phase5 = phase6 = phase7 = phase8 = {}
+        _wrapup_outcome = "failed"
+        _error_result   = None
         try:
             phase3 = _phase3_human_input(
                 table, engagement_id, run_id, phase2, phase1, human_context, prior
@@ -282,10 +318,37 @@ def lambda_handler(event: dict, context) -> dict:
                 phase1, phase2, phase3, phase4, phase5, phase6, phase7, run_id,
             )
             _save_phase(table, engagement_id, run_id, 8, phase8, accumulated)
+
+            _wrapup_outcome = "partial" if accumulated.get("phase6", {}).get("gaps_blocking") else "success"
         except _PhaseError as exc:
             _update_harness_run(table, engagement_id, run_id,
                                  {"status": "error", "error": str(exc)})
-            return _error_response(str(exc), {"run_id": run_id, "phase": exc.phase})
+            _error_result = _error_response(str(exc), {"run_id": run_id, "phase": exc.phase})
+        finally:
+            _artifacts = [
+                v for v in [
+                    phase8.get("report_html_s3_key"),
+                    phase8.get("report_txt_s3_key"),
+                    phase8.get("wiki_md_s3_key"),
+                    phase8.get("handoff_md_s3_key"),
+                ] if v
+            ]
+            _write_session_wrapup(
+                engagement_id=engagement_id,
+                run_id=run_id,
+                accumulated=accumulated,
+                outcome=_wrapup_outcome,
+                artifacts=_artifacts,
+                handoff={
+                    "next_best_step": phase8.get("next_best_step", "Review handoff report and assign delivery lead"),
+                    "open_items":     phase6.get("gaps", [])[:5],
+                    "risk_flags":     [phase2.get("risk_tier", "HIGH")],
+                    "confidence":     phase5.get("confidence", "medium"),
+                },
+            )
+
+        if _error_result:
+            return _error_result
 
         total_ms = int((time.time() - t0) * 1000)
         final_status = "completed_with_gaps" if accumulated.get("phase6", {}).get("gaps_blocking") else "completed"
@@ -760,11 +823,13 @@ def _phase8_write_handoff_report(
     # Persist markdown to workspace
     _write_workspace(engagement_id, f"{wiki_page_path}.md", md_content)
 
-    report_html_key = f"wiki/reports/{customer_id}-handoff-report-{today_str}.html"
-    report_txt_key  = f"wiki/reports/{customer_id}-handoff-report-{today_str}.txt"
-    wiki_md_key     = f"wiki/customers/{customer_id}-harness-handoff-{year_str}.md"
+    report_html_key   = f"wiki/reports/{customer_id}-handoff-report-{today_str}.html"
+    report_txt_key    = f"wiki/reports/{customer_id}-handoff-report-{today_str}.txt"
+    wiki_md_key       = f"wiki/reports/{customer_id}-harness-handoff-{year_str}.md"
+    handoff_md_key    = f"wiki/reports/{customer_id}-session-handoff-{today_str}.md"
 
-    download_url    = ""
+    download_url      = ""
+    handoff_md_url    = ""
 
     if WIKI_BUCKET:
         # 3. HTML report
@@ -777,11 +842,18 @@ def _phase8_write_handoff_report(
             phase1, phase2, phase3, phase4, phase5, phase6, phase7,
         )
 
+        # Build human-readable session handoff markdown
+        handoff_md_content = _build_session_handoff_md(
+            engagement_id, customer_name, product, today_str, run_id,
+            phase1, phase2, phase3, phase5, phase6,
+        )
+
         s3_errors = []
         for key, body, ct in [
-            (report_html_key, html_content, "text/html"),
-            (report_txt_key,  txt_content,  "text/plain"),
-            (wiki_md_key,     md_content,   "text/markdown"),
+            (report_html_key,  html_content,        "text/html"),
+            (report_txt_key,   txt_content,         "text/plain"),
+            (wiki_md_key,      md_content,          "text/markdown"),
+            (handoff_md_key,   handoff_md_content,  "text/markdown"),
         ]:
             try:
                 s3_client.put_object(
@@ -794,7 +866,7 @@ def _phase8_write_handoff_report(
                 s3_errors.append(f"{key}: {exc}")
                 print(f"WARN: S3 put_object failed for {key}: {exc}")
 
-        # 5. Presigned URL (12-hour)
+        # 5. Presigned URLs (12-hour)
         try:
             download_url = s3_client.generate_presigned_url(
                 "get_object",
@@ -803,6 +875,14 @@ def _phase8_write_handoff_report(
             )
         except Exception as exc:
             print(f"WARN: Presigned URL generation failed: {exc}")
+        try:
+            handoff_md_url = s3_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": WIKI_BUCKET, "Key": handoff_md_key},
+                ExpiresIn=43200,
+            )
+        except Exception as exc:
+            print(f"WARN: Presigned URL for handoff.md failed: {exc}")
     else:
         print("WARN: WIKI_BUCKET not set; skipping S3 writes")
 
@@ -815,7 +895,10 @@ def _phase8_write_handoff_report(
         "report_s3_key":        report_html_key,
         "report_txt_s3_key":    report_txt_key,
         "wiki_md_s3_key":       wiki_md_key,
+        "handoff_md_s3_key":    handoff_md_key,
+        "handoff_md_url":       handoff_md_url,
         "report_download_url":  download_url,
+        "next_best_step":       "Review handoff report and assign delivery lead",
     }
 
 
@@ -1197,6 +1280,55 @@ def _build_handoff_markdown(
     ])
 
 
+def _build_session_handoff_md(
+    engagement_id: str,
+    customer_name: str,
+    product: str,
+    date_str: str,
+    run_id: str,
+    phase1: dict,
+    phase2: dict,
+    phase3: dict,
+    phase5: dict,
+    phase6: dict,
+) -> str:
+    gaps = phase6.get("gaps", [])
+    open_items = "\n".join(
+        f"- [{g.get('gap_type','gap')}] {g.get('title', g.get('human_prompt',''))}"
+        for g in gaps[:10]
+    ) or "- None identified"
+    actions = phase5.get("action_items", [])
+    action_lines = "\n".join(f"- {a}" for a in actions[:10]) or "- None identified"
+    return "\n".join([
+        f"# Session Handoff — {customer_name}",
+        f"",
+        f"**Date:** {date_str}  ",
+        f"**Run ID:** {run_id}  ",
+        f"**Engagement:** {engagement_id}  ",
+        f"**Product:** {product}  ",
+        f"",
+        f"## Risk Assessment",
+        f"- Risk Tier: **{phase2.get('risk_tier','—')}**",
+        f"- Complexity: **{phase2.get('implementation_complexity','—')}**",
+        f"- Go-Live Urgency: **{phase2.get('go_live_urgency','—')}**",
+        f"",
+        f"## Next Best Step",
+        f"Review the generated handoff report, assign delivery lead, and schedule kickoff.",
+        f"",
+        f"## Open Items",
+        open_items,
+        f"",
+        f"## Delivery Risk Actions",
+        action_lines,
+        f"",
+        f"## Sales Context Summary",
+        phase3.get("summary", phase3.get("human_context", ""))[:800] or "Not provided.",
+        f"",
+        f"---",
+        f"_Generated by LLMWiki UC1 Harness v1.2_",
+    ])
+
+
 def _build_completion_summary(run_id: str, customer_id: str, customer_name: str,
                                phases_completed: int, total_latency_ms: int,
                                phase_results: dict, download_url: str) -> dict:
@@ -1211,6 +1343,7 @@ def _build_completion_summary(run_id: str, customer_id: str, customer_name: str,
         "phases_done":         phases_done,
         "total_latency_ms":    total_latency_ms,
         "report_download_url": download_url,
+        "handoff_md_url":      p8.get("handoff_md_url", ""),
         "phase_results":       phase_results,
         "status":              final_status,
         "wiki_page_path":      p8.get("wiki_page_path", ""),

@@ -25,6 +25,34 @@ except ImportError:
     import boto3
     logger.debug("Using inline boto3 Lambda invocation (llmwiki_common not on PYTHONPATH)")
 
+# ── OTel tracing (graceful no-op if packages absent) ─────────────────────────
+_OTEL_OK = False
+_tracer = None
+
+def _init_otel():
+    global _OTEL_OK, _tracer
+    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    if not endpoint:
+        return
+    try:
+        from opentelemetry import trace
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        provider = TracerProvider()
+        exporter = OTLPSpanExporter(
+            endpoint=f"{endpoint.rstrip('/')}/v1/traces",
+        )
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        trace.set_tracer_provider(provider)
+        _tracer = trace.get_tracer("neuro-san-agents")
+        _OTEL_OK = True
+        logger.info("OTel tracing enabled → %s (project: neuro-san-agents)", endpoint)
+    except Exception as exc:
+        logger.warning("OTel tracing init failed: %s", exc)
+
+_init_otel()
+
 
 class LLMWikiBaseTool:
     """
@@ -50,7 +78,31 @@ class LLMWikiBaseTool:
         """
         Invoke a Lambda-backed LLMWiki skill and return the unwrapped outputs dict.
         Returns an error dict (with '_error': True) on failure — never raises.
+        Wraps the call in an OTel span when OTEL_EXPORTER_OTLP_ENDPOINT is set.
         """
+        if _OTEL_OK and _tracer:
+            return self._invoke_skill_traced(function_name, payload)
+        return self._raw_invoke(function_name, payload)
+
+    def _invoke_skill_traced(self, function_name: str, payload: dict) -> Dict[str, Any]:
+        """Instrumented path — only called when _OTEL_OK is True."""
+        from opentelemetry import trace as _otel_trace
+        question = str(payload.get("q", payload.get("question", payload.get("prompt", ""))))[:500]
+        with _tracer.start_as_current_span(function_name) as span:
+            span.set_attribute("neuro_san.tool", type(self).__name__)
+            span.set_attribute("neuro_san.skill", function_name)
+            span.set_attribute("input.value", question)
+            span.set_attribute("openinference.span.kind", "CHAIN")
+            result = self._raw_invoke(function_name, payload)
+            span.set_attribute("output.value", str(result.get("answer", result.get("result", "")))[:500])
+            span.set_attribute("neuro_san.error", str(result.get("_error", False)))
+            span.set_attribute("neuro_san.confidence", str(result.get("confidence", "")))
+            if result.get("_error"):
+                span.set_status(_otel_trace.StatusCode.ERROR, str(result.get("error", "")))
+            return result
+
+    def _raw_invoke(self, function_name: str, payload: dict) -> Dict[str, Any]:
+        """Direct Lambda invocation — no tracing overhead."""
         if _HAS_COMMON:
             result = _common_invoke(function_name, payload, label=function_name)
             if result is None:

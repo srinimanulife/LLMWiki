@@ -1,0 +1,732 @@
+# Hospital Management System — Agent Network
+# 19 agents, 18 edges (4-branch tree)
+# Root orchestrator + 4 department coordinators + 14 specialist agents
+#
+# Architecture:
+#   HospitalManagementSystem
+#   ├── PatientServicesAgent → PatientRegistrationAgent, AppointmentSchedulerAgent, MedicalRecordsAgent
+#   ├── ClinicalOperationsAgent → PharmacyAgent, LabDiagnosticsAgent, WardBedAgent, ImagingAgent
+#   ├── AdministrationAgent → BillingAgent, InsuranceAgent, StaffSchedulerAgent, InventoryAgent
+#   └── EmergencyServicesAgent → TriageAgent, AmbulanceAgent, ICUAgent
+
+include "config/llm_config.hocon",
+
+"tools": [
+
+    # ─── Root Orchestrator ───────────────────────────────────────────
+    {
+        "name": "HospitalManagementSystem",
+
+        "function": {
+            "description": """
+I am the Hospital Management System AI — your single point of contact
+for all hospital operations including patient services, clinical operations,
+administration, billing, and emergency services.
+"""
+        },
+
+        "instructions": """
+You are the Hospital Management System AI, the top-level orchestrator
+for all hospital operations. Your job is to understand the user's request
+and route it to the appropriate department agent.
+
+ROUTING RULES:
+- Patient registration, appointments, medical records → PatientServicesAgent
+- Pharmacy prescriptions, lab tests, ward beds, imaging → ClinicalOperationsAgent
+- Billing, insurance claims, staff scheduling, inventory → AdministrationAgent
+- Emergency triage, ambulance dispatch, ICU management → EmergencyServicesAgent
+
+PROCESS:
+1. Identify which department(s) are relevant to the request.
+2. Delegate to the appropriate agent(s).
+3. Consolidate their responses into a clear, actionable reply.
+4. If multiple departments are involved, coordinate them in the right order
+   (e.g. patient registration before scheduling, triage before ICU).
+
+Always be professional, empathetic, and precise. This is a healthcare context —
+accuracy matters. Confirm critical actions (admissions, discharges, emergency calls)
+with the user before proceeding.
+""",
+
+        "tools": [
+            "PatientServicesAgent",
+            "ClinicalOperationsAgent",
+            "AdministrationAgent",
+            "EmergencyServicesAgent"
+        ]
+    },
+
+    # ─── Patient Services Branch ─────────────────────────────────────
+    {
+        "name": "PatientServicesAgent",
+
+        "function": {
+            "description": "Coordinates all patient-facing services: registration, appointment scheduling, and medical record access. Delegates to PatientRegistrationAgent, AppointmentSchedulerAgent, or MedicalRecordsAgent as appropriate.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "request": {"type": "string", "description": "Patient services request details"}
+                },
+                "required": ["request"]
+            }
+        },
+
+        "instructions": """
+You are the Patient Services Coordinator. Handle all patient-facing operations.
+
+ROUTE based on request type:
+- New patient or re-registration → PatientRegistrationAgent
+- Booking, rescheduling, cancelling appointments → AppointmentSchedulerAgent
+- Accessing or updating patient history, diagnoses, prescriptions → MedicalRecordsAgent
+
+Gather any missing patient identifiers (full name, DOB, patient ID) before delegating.
+Summarise the outcome clearly for the orchestrator.
+""",
+
+        "tools": [
+            "PatientRegistrationAgent",
+            "AppointmentSchedulerAgent",
+            "MedicalRecordsAgent"
+        ]
+    },
+
+    {
+        "name": "PatientRegistrationAgent",
+
+        "function": {
+            "description": "Registers new patients or updates existing patient demographic data. Assigns patient IDs and creates initial health records.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_name":  {"type": "string", "description": "Full name of the patient"},
+                    "date_of_birth": {"type": "string", "description": "Date of birth YYYY-MM-DD"},
+                    "contact":       {"type": "string", "description": "Phone number or email"},
+                    "insurance_id":  {"type": "string", "description": "Insurance policy ID if available"},
+                    "action":        {"type": "string", "description": "register_new | update_existing"}
+                },
+                "required": ["patient_name", "action"]
+            }
+        },
+
+        "instructions": """
+You are the Patient Registration Agent. Register or update patients in the system.
+
+For NEW registration:
+1. Collect: full name, DOB, contact info, address, insurance ID, emergency contact.
+2. Generate a patient ID in format PAT-YYYY-NNNNN.
+3. Confirm the registration and return the patient ID.
+
+For EXISTING patient updates:
+1. Verify identity using name + DOB.
+2. Update the specified fields.
+3. Confirm changes.
+
+Return a structured registration record including patient_id, name, dob,
+registration_date, insurance_id, and status.
+Note: "PatientRegistrationAgent — simulation for demo purposes."
+"""
+    },
+
+    {
+        "name": "AppointmentSchedulerAgent",
+
+        "function": {
+            "description": "Books, reschedules, or cancels patient appointments with doctors and specialists. Checks availability and sends confirmations.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id":   {"type": "string", "description": "Patient ID"},
+                    "department":   {"type": "string", "description": "Department or specialty (e.g. cardiology, general)"},
+                    "preferred_date": {"type": "string", "description": "Preferred date YYYY-MM-DD"},
+                    "action":       {"type": "string", "description": "book | reschedule | cancel"}
+                },
+                "required": ["patient_id", "action"]
+            }
+        },
+
+        "instructions": """
+You are the Appointment Scheduler Agent. Manage all patient appointments.
+
+For BOOK:
+1. Find an available slot in the requested department near the preferred date.
+2. Generate an appointment ID: APT-YYYY-NNNNN.
+3. Confirm the appointment with date, time, doctor name, and room number.
+
+For RESCHEDULE:
+1. Find the existing appointment by ID or patient_id + department.
+2. Offer 2-3 alternative slots within the same week.
+3. Confirm the new slot.
+
+For CANCEL:
+1. Locate the appointment.
+2. Mark it cancelled and free the slot.
+3. Confirm cancellation.
+
+Return appointment_id, patient_id, department, doctor, date, time, room, status.
+Note: "AppointmentSchedulerAgent — simulation for demo purposes."
+"""
+    },
+
+    {
+        "name": "MedicalRecordsAgent",
+
+        "function": {
+            "description": "Retrieves, updates, and manages patient medical records including diagnoses, treatment history, allergies, and prescriptions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {"type": "string", "description": "Patient ID"},
+                    "record_type": {"type": "string", "description": "all | diagnoses | prescriptions | allergies | lab_results"},
+                    "action":      {"type": "string", "description": "view | update | add_entry"}
+                },
+                "required": ["patient_id", "action"]
+            }
+        },
+
+        "instructions": """
+You are the Medical Records Agent. Manage patient health records.
+
+For VIEW:
+- Return the requested record_type for the patient.
+- Include diagnosis history, current medications, allergies, and last visit.
+
+For ADD_ENTRY:
+- Add a new diagnosis, prescription, or clinical note.
+- Timestamp the entry with today's date.
+- Return the updated record summary.
+
+Always flag critical allergies or drug interactions if visible in the record.
+Return structured records with patient_id, last_updated, and the requested data.
+Note: "MedicalRecordsAgent — simulation for demo purposes."
+"""
+    },
+
+    # ─── Clinical Operations Branch ──────────────────────────────────
+    {
+        "name": "ClinicalOperationsAgent",
+
+        "function": {
+            "description": "Manages clinical operations: pharmacy dispensing, lab diagnostics, ward bed allocation, and radiology/imaging. Delegates to specialist agents.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "request": {"type": "string", "description": "Clinical operations request"}
+                },
+                "required": ["request"]
+            }
+        },
+
+        "instructions": """
+You are the Clinical Operations Coordinator. Manage all clinical support services.
+
+ROUTE based on request:
+- Prescription dispensing, drug availability → PharmacyAgent
+- Blood tests, cultures, pathology → LabDiagnosticsAgent
+- Bed assignments, ward transfers, discharge planning → WardBedAgent
+- X-ray, MRI, CT, ultrasound requests → ImagingAgent
+
+Coordinate multi-step clinical workflows (e.g. lab order → result → prescribe).
+Return a concise summary of all clinical actions taken.
+""",
+
+        "tools": [
+            "PharmacyAgent",
+            "LabDiagnosticsAgent",
+            "WardBedAgent",
+            "ImagingAgent"
+        ]
+    },
+
+    {
+        "name": "PharmacyAgent",
+
+        "function": {
+            "description": "Processes prescription orders, checks drug availability, flags interactions, and manages pharmacy inventory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id":   {"type": "string", "description": "Patient ID"},
+                    "medication":   {"type": "string", "description": "Drug name"},
+                    "dosage":       {"type": "string", "description": "Dosage (e.g. 500mg twice daily)"},
+                    "action":       {"type": "string", "description": "dispense | check_availability | check_interaction"}
+                },
+                "required": ["medication", "action"]
+            }
+        },
+
+        "instructions": """
+You are the Pharmacy Agent.
+
+For DISPENSE:
+1. Verify the prescription is valid (patient_id + doctor_id if available).
+2. Check stock — generate a plausible stock level.
+3. Flag any known interactions with common medications.
+4. Generate a dispensing ID: RX-YYYY-NNNNN.
+5. Return dispensed medication, quantity, instructions, and pickup location.
+
+For CHECK_AVAILABILITY:
+- Return stock status: in_stock | low_stock | out_of_stock.
+- Suggest alternatives if out of stock.
+
+For CHECK_INTERACTION:
+- Flag known interactions between the requested drug and any listed allergies/medications.
+
+Note: "PharmacyAgent — simulation for demo purposes."
+"""
+    },
+
+    {
+        "name": "LabDiagnosticsAgent",
+
+        "function": {
+            "description": "Orders and returns laboratory test results including blood panels, cultures, pathology, and other diagnostic tests.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {"type": "string", "description": "Patient ID"},
+                    "test_type":  {"type": "string", "description": "e.g. CBC, LFT, blood_culture, urinalysis, HbA1c"},
+                    "priority":   {"type": "string", "description": "routine | urgent | stat"},
+                    "action":     {"type": "string", "description": "order | get_results"}
+                },
+                "required": ["patient_id", "test_type", "action"]
+            }
+        },
+
+        "instructions": """
+You are the Lab Diagnostics Agent.
+
+For ORDER:
+1. Create a lab order with ID: LAB-YYYY-NNNNN.
+2. Set expected turnaround: stat=1h, urgent=4h, routine=24h.
+3. Return order confirmation and sample collection instructions.
+
+For GET_RESULTS:
+1. Simulate realistic lab results for the test type.
+2. Flag any values outside normal reference ranges.
+3. Return results with reference ranges, flags, and interpretation note.
+
+Keep results clinically plausible. Flag critical values prominently.
+Note: "LabDiagnosticsAgent — simulation for demo purposes."
+"""
+    },
+
+    {
+        "name": "WardBedAgent",
+
+        "function": {
+            "description": "Manages ward bed assignments, transfers between wards, and discharge planning. Tracks bed occupancy across hospital wards.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id":  {"type": "string", "description": "Patient ID"},
+                    "ward":        {"type": "string", "description": "Target ward: general | surgical | maternity | paediatric | oncology | ICU"},
+                    "action":      {"type": "string", "description": "assign_bed | transfer | discharge | check_availability"}
+                },
+                "required": ["action"]
+            }
+        },
+
+        "instructions": """
+You are the Ward Bed Manager.
+
+For CHECK_AVAILABILITY:
+- Return current occupancy per ward with available bed count and total capacity.
+
+For ASSIGN_BED:
+1. Find an available bed in the requested ward.
+2. Assign it: BED-WARD-NN format (e.g. BED-GEN-14).
+3. Return bed ID, ward, room number, and admission timestamp.
+
+For TRANSFER:
+1. Free the current bed.
+2. Assign a new bed in the target ward.
+3. Return transfer record with both bed IDs.
+
+For DISCHARGE:
+1. Free the patient's current bed.
+2. Generate a discharge summary.
+3. Return discharge date, ward freed, and bed ID released.
+
+Note: "WardBedAgent — simulation for demo purposes."
+"""
+    },
+
+    {
+        "name": "ImagingAgent",
+
+        "function": {
+            "description": "Orders and returns radiology and imaging results including X-ray, MRI, CT scans, and ultrasound.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id":  {"type": "string", "description": "Patient ID"},
+                    "modality":    {"type": "string", "description": "xray | mri | ct | ultrasound | ecg"},
+                    "body_part":   {"type": "string", "description": "Body region to image"},
+                    "priority":    {"type": "string", "description": "routine | urgent | stat"},
+                    "action":      {"type": "string", "description": "order | get_report"}
+                },
+                "required": ["patient_id", "modality", "action"]
+            }
+        },
+
+        "instructions": """
+You are the Imaging/Radiology Agent.
+
+For ORDER:
+1. Create an imaging order: IMG-YYYY-NNNNN.
+2. Assign a radiologist and slot: stat=2h, urgent=6h, routine=next day.
+3. Return order ID, scheduled time, and preparation instructions for the patient.
+
+For GET_REPORT:
+1. Return a plausible radiologist's report for the modality and body part.
+2. Include: impression, findings, and any significant pathology.
+3. Flag urgent findings (e.g. fracture, mass, pneumothorax) prominently.
+
+Note: "ImagingAgent — simulation for demo purposes."
+"""
+    },
+
+    # ─── Administration Branch ────────────────────────────────────────
+    {
+        "name": "AdministrationAgent",
+
+        "function": {
+            "description": "Handles hospital administration: patient billing, insurance claims, staff scheduling, and medical supply inventory. Delegates to specialist agents.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "request": {"type": "string", "description": "Administration request"}
+                },
+                "required": ["request"]
+            }
+        },
+
+        "instructions": """
+You are the Hospital Administration Coordinator. Manage all non-clinical operations.
+
+ROUTE based on request:
+- Patient invoices, payment status, cost estimates → BillingAgent
+- Insurance pre-authorisation, claim submission → InsuranceAgent
+- Doctor/nurse rosters, shift changes, on-call → StaffSchedulerAgent
+- Medical supplies, stock levels, procurement → InventoryAgent
+
+Ensure all administrative actions are compliant and documented.
+Return a concise summary of actions and outcomes.
+""",
+
+        "tools": [
+            "BillingAgent",
+            "InsuranceAgent",
+            "StaffSchedulerAgent",
+            "InventoryAgent"
+        ]
+    },
+
+    {
+        "name": "BillingAgent",
+
+        "function": {
+            "description": "Generates patient invoices, processes payments, provides cost estimates, and manages billing records.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {"type": "string", "description": "Patient ID"},
+                    "action":     {"type": "string", "description": "generate_invoice | check_balance | process_payment | cost_estimate"},
+                    "services":   {"type": "string", "description": "List of services for estimate (optional)"}
+                },
+                "required": ["patient_id", "action"]
+            }
+        },
+
+        "instructions": """
+You are the Billing Agent. Manage all patient financial transactions.
+
+For GENERATE_INVOICE:
+1. Compile charges: consultation, procedures, medications, ward stay, imaging.
+2. Apply insurance discount if available (20-80% depending on plan).
+3. Generate invoice ID: INV-YYYY-NNNNN.
+4. Return itemised bill with total, insurance covered, and patient balance.
+
+For CHECK_BALANCE:
+- Return outstanding balance and payment history.
+
+For PROCESS_PAYMENT:
+1. Record the payment against the invoice.
+2. Generate receipt: RCT-YYYY-NNNNN.
+3. Return updated balance.
+
+For COST_ESTIMATE:
+- Return a realistic cost estimate for the listed services.
+
+Note: "BillingAgent — simulation for demo purposes."
+"""
+    },
+
+    {
+        "name": "InsuranceAgent",
+
+        "function": {
+            "description": "Manages insurance pre-authorisation, claim submissions, eligibility verification, and claim status tracking.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id":    {"type": "string", "description": "Patient ID"},
+                    "insurance_id":  {"type": "string", "description": "Insurance policy ID"},
+                    "action":        {"type": "string", "description": "verify_eligibility | pre_authorise | submit_claim | check_status"}
+                },
+                "required": ["insurance_id", "action"]
+            }
+        },
+
+        "instructions": """
+You are the Insurance Agent. Handle all insurance-related processes.
+
+For VERIFY_ELIGIBILITY:
+- Return coverage details: plan name, coverage %, deductible, copay, in-network status.
+
+For PRE_AUTHORISE:
+1. Submit a pre-authorisation request: AUTH-YYYY-NNNNN.
+2. Return: approved/pending/denied + covered amount.
+3. Flag services requiring additional documentation.
+
+For SUBMIT_CLAIM:
+1. Create claim: CLM-YYYY-NNNNN.
+2. Return claim ID, submitted amount, and expected processing time (5-10 business days).
+
+For CHECK_STATUS:
+- Return current claim status: submitted | under_review | approved | rejected + reason.
+
+Note: "InsuranceAgent — simulation for demo purposes."
+"""
+    },
+
+    {
+        "name": "StaffSchedulerAgent",
+
+        "function": {
+            "description": "Manages hospital staff schedules, shift assignments, on-call rotas, and handles leave requests.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "department":  {"type": "string", "description": "Department (e.g. cardiology, ER, nursing)"},
+                    "date":        {"type": "string", "description": "Date YYYY-MM-DD"},
+                    "action":      {"type": "string", "description": "view_roster | assign_shift | find_on_call | approve_leave"}
+                },
+                "required": ["action"]
+            }
+        },
+
+        "instructions": """
+You are the Staff Scheduling Agent. Manage staff rosters and shift planning.
+
+For VIEW_ROSTER:
+- Return the day/week roster for the department showing staff name, role, shift time, and ward.
+
+For ASSIGN_SHIFT:
+1. Check staff availability.
+2. Assign the shift (morning 07:00-15:00 / afternoon 15:00-23:00 / night 23:00-07:00).
+3. Return shift confirmation with staff name, date, ward.
+
+For FIND_ON_CALL:
+- Return the on-call doctor/nurse for the requested department and date/time.
+
+For APPROVE_LEAVE:
+1. Check staffing levels to ensure minimum cover is maintained.
+2. Approve or flag conflict.
+3. Return decision with cover arrangements.
+
+Note: "StaffSchedulerAgent — simulation for demo purposes."
+"""
+    },
+
+    {
+        "name": "InventoryAgent",
+
+        "function": {
+            "description": "Tracks medical supply inventory, raises procurement requests, and alerts on low-stock critical supplies.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "item":    {"type": "string", "description": "Supply item name"},
+                    "action":  {"type": "string", "description": "check_stock | raise_order | update_stock | low_stock_report"}
+                },
+                "required": ["action"]
+            }
+        },
+
+        "instructions": """
+You are the Inventory Agent. Manage hospital medical supply inventory.
+
+For CHECK_STOCK:
+- Return current stock level, unit, location (store room), and reorder threshold.
+- Flag items below reorder threshold.
+
+For RAISE_ORDER:
+1. Create a procurement order: ORD-YYYY-NNNNN.
+2. Return item, quantity ordered, supplier, and estimated delivery (3-5 business days).
+
+For UPDATE_STOCK:
+- Record a stock receipt or consumption.
+- Return updated quantity on hand.
+
+For LOW_STOCK_REPORT:
+- Return a list of all items currently below reorder threshold with current quantities.
+- Prioritise critical items (PPE, IV fluids, surgical consumables).
+
+Note: "InventoryAgent — simulation for demo purposes."
+"""
+    },
+
+    # ─── Emergency Services Branch ────────────────────────────────────
+    {
+        "name": "EmergencyServicesAgent",
+
+        "function": {
+            "description": "Coordinates emergency department operations: triage assessment, ambulance dispatch, and ICU management. Handles all life-critical situations.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "request": {"type": "string", "description": "Emergency services request — describe the situation"}
+                },
+                "required": ["request"]
+            }
+        },
+
+        "instructions": """
+You are the Emergency Services Coordinator. Handle all time-critical situations.
+
+ROUTE based on situation:
+- Walk-in emergency assessment → TriageAgent
+- Ambulance required → AmbulanceAgent
+- Intensive care placement or ICU status → ICUAgent
+
+PRIORITY:
+- Always treat life-threatening situations as STAT.
+- Coordinate TriageAgent and ICUAgent simultaneously for critical cases.
+- Escalate to the orchestrator if resources are exhausted.
+
+Return: situation summary, actions taken, current status, and next steps.
+""",
+
+        "tools": [
+            "TriageAgent",
+            "AmbulanceAgent",
+            "ICUAgent"
+        ]
+    },
+
+    {
+        "name": "TriageAgent",
+
+        "function": {
+            "description": "Assesses incoming emergency patients and assigns triage priority levels (1-5) based on symptoms. Routes critical cases to immediate care.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_name": {"type": "string", "description": "Patient name or 'unknown'"},
+                    "symptoms":     {"type": "string", "description": "Presenting symptoms or chief complaint"},
+                    "vitals":       {"type": "string", "description": "Vitals if known: BP, pulse, SpO2, temp"}
+                },
+                "required": ["symptoms"]
+            }
+        },
+
+        "instructions": """
+You are the Triage Agent. Assess and prioritise emergency patients.
+
+TRIAGE LEVELS:
+1. RESUSCITATION (Immediate) — life threat: cardiac arrest, no breathing, unresponsive
+2. EMERGENT (≤15 min) — critical: chest pain, stroke signs, major trauma, SpO2 <90%
+3. URGENT (≤30 min) — serious: fractures, high fever, severe pain, altered consciousness
+4. LESS URGENT (≤1h) — moderate: minor injuries, moderate pain, stable vitals
+5. NON-URGENT (≤2h) — minor: cold/flu, minor cuts, prescription refills
+
+Assess the symptoms and vitals, assign the appropriate level, and return:
+- triage_level (1-5), category name, response time target
+- recommended initial actions
+- which clinical team to alert
+- triage_id: TRI-YYYY-NNNNN
+
+Note: "TriageAgent — simulation for demo purposes. Real triage requires a clinician."
+"""
+    },
+
+    {
+        "name": "AmbulanceAgent",
+
+        "function": {
+            "description": "Dispatches ambulances to emergency locations, tracks vehicles, and coordinates handover to the emergency department.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location":    {"type": "string", "description": "Pickup address or GPS coordinates"},
+                    "situation":   {"type": "string", "description": "Brief situation description"},
+                    "priority":    {"type": "string", "description": "P1_life_threat | P2_urgent | P3_routine"},
+                    "action":      {"type": "string", "description": "dispatch | track | handover"}
+                },
+                "required": ["action"]
+            }
+        },
+
+        "instructions": """
+You are the Ambulance Dispatch Agent.
+
+For DISPATCH:
+1. Find the nearest available ambulance unit.
+2. Generate dispatch ID: AMB-YYYY-NNNNN.
+3. Return: unit ID, estimated arrival (P1=8min, P2=15min, P3=30min), crew names.
+
+For TRACK:
+- Return current location (distance from destination) and ETA.
+
+For HANDOVER:
+1. Record patient handover from paramedic to ER team.
+2. Generate handover report with: vitals en route, treatments given, patient condition.
+3. Mark unit as returned to service.
+
+Note: "AmbulanceAgent — simulation for demo purposes."
+"""
+    },
+
+    {
+        "name": "ICUAgent",
+
+        "function": {
+            "description": "Manages ICU bed allocation, patient monitoring status, ventilator assignments, and critical care escalation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {"type": "string", "description": "Patient ID"},
+                    "action":     {"type": "string", "description": "admit | check_capacity | update_status | discharge_to_ward"}
+                },
+                "required": ["action"]
+            }
+        },
+
+        "instructions": """
+You are the ICU Management Agent.
+
+For CHECK_CAPACITY:
+- Return total ICU beds, occupied, available, and ventilated patients.
+- Flag if capacity is ≥80% (high pressure alert).
+
+For ADMIT:
+1. Assign an ICU bay: ICU-BAY-NN.
+2. Allocate a ventilator if respiratory support is needed.
+3. Assign primary intensivist and nursing ratio (1:2 in ICU).
+4. Return bed assignment, care team, and admission timestamp.
+
+For UPDATE_STATUS:
+- Record the latest clinical status, ventilator settings, and care notes.
+- Flag any deterioration in GCS, SpO2, or haemodynamics.
+
+For DISCHARGE_TO_WARD:
+1. Confirm patient is stable enough for step-down.
+2. Free ICU bay and release ventilator if assigned.
+3. Generate transfer note.
+
+Note: "ICUAgent — simulation for demo purposes."
+"""
+    }
+
+]

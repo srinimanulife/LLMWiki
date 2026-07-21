@@ -24,6 +24,7 @@ s3_client     = boto3.client("s3",              region_name=_region, config=Conf
 PM_RUNS_TABLE     = os.environ.get("PM_RUNS_TABLE",    "llmwiki-pm-runs")
 PM_WIKI_BUCKET    = os.environ.get("PM_WIKI_BUCKET",   "")
 MODEL_ID          = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6")
+LOG_TABLE         = os.environ.get("LOG_TABLE",        "llmwiki-log")
 
 SK01_FUNCTION     = os.environ.get("SK01_FUNCTION", "llmwiki-skill-context-bootstrap")
 SK02_FUNCTION     = os.environ.get("SK02_FUNCTION", "llmwiki-skill-wiki-query")
@@ -180,28 +181,61 @@ def _resume_workflow(table, existing, batch_id, problem_id, product,
 
     _update_run(table, run_id, batch_id, {"status": "running", "current_phase": 4})
 
-    # Phase 4 — SK-01 Load Prior Knowledge
-    phase4 = _phase4_prior_knowledge(product, component, phase2)
-    _save_phase(table, run_id, batch_id, 4, phase4)
+    phase4 = phase5 = phase6 = phase7 = phase8 = {}
+    _wrapup_outcome = "failed"
+    try:
+        # Phase 4 — SK-01 Load Prior Knowledge
+        phase4 = _phase4_prior_knowledge(product, component, phase2)
+        _save_phase(table, run_id, batch_id, 4, phase4)
 
-    # Phase 5 — SK-02 RCA Draft
-    phase5 = _phase5_rca_draft(phase1, phase2, sme_context, phase4)
-    _save_phase(table, run_id, batch_id, 5, phase5)
+        # Phase 5 — SK-02 RCA Draft
+        phase5 = _phase5_rca_draft(phase1, phase2, sme_context, phase4)
+        _save_phase(table, run_id, batch_id, 5, phase5)
 
-    # Phase 6 — SK-05 Gap Detection
-    phase6 = _phase6_gap_detection(phase5, problem_id, product)
-    _save_phase(table, run_id, batch_id, 6, phase6)
+        # Phase 6 — SK-05 Gap Detection
+        phase6 = _phase6_gap_detection(phase5, problem_id, product)
+        _save_phase(table, run_id, batch_id, 6, phase6)
 
-    # Phase 7 — SK-04 Template Fill
-    phase7 = _phase7_template_fill(phase1, phase2, phase5, phase6)
-    _save_phase(table, run_id, batch_id, 7, phase7)
+        # Phase 7 — SK-04 Template Fill
+        phase7 = _phase7_template_fill(phase1, phase2, phase5, phase6)
+        _save_phase(table, run_id, batch_id, 7, phase7)
 
-    # Phase 8 — Write Draft + Report
-    phase8 = _phase8_write_and_report(
-        batch_id, problem_id, product, severity, component,
-        run_id, phase1, phase2, phase4, phase5, phase6, phase7
-    )
-    _save_phase(table, run_id, batch_id, 8, phase8)
+        # Phase 8 — Write Draft + Report
+        phase8 = _phase8_write_and_report(
+            batch_id, problem_id, product, severity, component,
+            run_id, phase1, phase2, phase4, phase5, phase6, phase7
+        )
+        _save_phase(table, run_id, batch_id, 8, phase8)
+
+        _wrapup_outcome = "partial" if phase6.get("gaps_blocking") else "success"
+    except Exception as exc:
+        print(f"ERROR: _resume_workflow failed: {exc}")
+        _wrapup_outcome = "failed"
+        _update_run(table, run_id, batch_id, {"status": "error", "error": str(exc)})
+        _write_session_wrapup(
+            run_id, batch_id, problem_id,
+            phases_completed=[1, 2, 3],
+            outcome="failed",
+            artifacts=[],
+            phase2=phase2, phase5=phase5, phase6=phase6,
+        )
+        return _respond(500, {"error": str(exc), "run_id": run_id})
+    finally:
+        if _wrapup_outcome != "failed":
+            _write_session_wrapup(
+                run_id, batch_id, problem_id,
+                phases_completed=[1, 2, 3, 4, 5, 6, 7, 8],
+                outcome=_wrapup_outcome,
+                artifacts=[
+                    v for v in [
+                        phase8.get("wiki_rca_page_id"),
+                        phase8.get("wiki_kedb_page_id"),
+                        phase8.get("report_s3_key"),
+                        phase8.get("handoff_md_s3_key"),
+                    ] if v
+                ],
+                phase2=phase2, phase5=phase5, phase6=phase6,
+            )
 
     total_ms = int((time.time() - t_start) * 1000)
     final_status = "completed_with_gaps" if phase6.get("gaps_blocking") else "completed"
@@ -210,6 +244,7 @@ def _resume_workflow(table, existing, batch_id, problem_id, product,
         "current_phase":        8,
         "phases_completed":     [1, 2, 3, 4, 5, 6, 7, 8],
         "report_download_url":  phase8.get("report_download_url", ""),
+        "handoff_md_url":       phase8.get("handoff_md_url", ""),
         "wiki_rca_page_id":     phase8.get("wiki_rca_page_id", ""),
         "wiki_kedb_page_id":    phase8.get("wiki_kedb_page_id", ""),
         "total_latency_ms":     total_ms,
@@ -221,6 +256,7 @@ def _resume_workflow(table, existing, batch_id, problem_id, product,
         "phases_completed":     [1, 2, 3, 4, 5, 6, 7, 8],
         "total_latency_ms":     total_ms,
         "report_download_url":  phase8.get("report_download_url", ""),
+        "handoff_md_url":       phase8.get("handoff_md_url", ""),
         "wiki_rca_page_id":     phase8.get("wiki_rca_page_id", ""),
         "wiki_kedb_page_id":    phase8.get("wiki_kedb_page_id", ""),
         "phase_results": {
@@ -585,8 +621,8 @@ def _phase8_write_and_report(batch_id, problem_id, product, severity, component,
     """Write draft to wiki (S3) and generate HTML report."""
     rca_doc   = phase7.get("rca_document", {})
     kedb_doc  = phase7.get("kedb_entry", {})
-    gaps      = phase6.get("gaps", [])
     blocking  = phase6.get("gaps_blocking", False)
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # Write RCA draft to S3 (draft — never published)
     rca_key  = f"wiki/pm/drafts/{problem_id}/rca-draft.json"
@@ -602,15 +638,26 @@ def _phase8_write_and_report(batch_id, problem_id, product, severity, component,
     report_key = f"wiki/pm/reports/{run_id.replace('#','_')}-report.html"
     _s3_put(PM_WIKI_BUCKET, report_key, html, content_type="text/html")
 
+    # Write human-readable session handoff markdown
+    handoff_md_key = f"sessions/{batch_id}/{today_str}-handoff.md"
+    handoff_md = _build_session_handoff_md(
+        batch_id, problem_id, product, today_str, run_id,
+        phase2, phase5, phase6,
+    )
+    _s3_put(PM_WIKI_BUCKET, handoff_md_key, handoff_md, content_type="text/markdown")
+
     report_download_url = _presign(PM_WIKI_BUCKET, report_key)
+    handoff_md_url      = _presign(PM_WIKI_BUCKET, handoff_md_key)
 
     return {
-        "wiki_rca_page_id":  rca_key,
-        "wiki_kedb_page_id": kedb_key,
-        "report_s3_key":          report_key,
-        "report_download_url":    report_download_url,
-        "indexed":                bool(rca_key),
-        "status":                 "completed_with_gaps" if blocking else "completed",
+        "wiki_rca_page_id":    rca_key,
+        "wiki_kedb_page_id":   kedb_key,
+        "report_s3_key":       report_key,
+        "handoff_md_s3_key":   handoff_md_key,
+        "report_download_url": report_download_url,
+        "handoff_md_url":      handoff_md_url,
+        "indexed":             bool(rca_key),
+        "status":              "completed_with_gaps" if blocking else "completed",
     }
 
 
@@ -789,6 +836,101 @@ def _build_report_html(batch_id, problem_id, product, severity, component,
 </p>
 </body>
 </html>"""
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Session wrap-up (llmwiki-log)
+# ════════════════════════════════════════════════════════════════════════════
+
+def _write_session_wrapup(
+    run_id: str,
+    batch_id: str,
+    problem_id: str,
+    phases_completed: list,
+    outcome: str,
+    artifacts: list,
+    phase2: dict,
+    phase5: dict,
+    phase6: dict,
+) -> None:
+    now = datetime.now(timezone.utc)
+    date_str = now.strftime("%Y-%m-%d")
+    iso_str  = now.isoformat()
+    gaps     = phase6.get("gaps", [])
+    try:
+        table = dynamodb.Table(LOG_TABLE)
+        table.put_item(Item={
+            "log_date":          f"session#pm-harness#{date_str}",
+            "timestamp_id":      f"{iso_str}#{run_id}",
+            "phases_completed":  [str(p) for p in phases_completed],
+            "phases_failed":     [],
+            "outcome":           outcome,
+            "artifacts_written": artifacts,
+            "handoff": {
+                "next_best_step":  "Problem Coordinator to review RCA draft and assign resolution owner",
+                "open_items":      gaps[:5],
+                "risk_flags":      [phase2.get("risk_tier", "low")],
+                "confidence":      phase5.get("rca_confidence", phase5.get("confidence", "low")),
+            },
+            "agent_id":          "UC-PM-ProblemMgmtAgent",
+            "session_id":        run_id,
+            "engagement_id":     batch_id,
+            "problem_id":        problem_id,
+            "harness_version":   "v1.2",
+            "ttl":               int(time.time()) + (90 * 86400),
+        })
+    except Exception as exc:
+        print(f"WARN: _write_session_wrapup (pm) failed: {exc}")
+
+
+def _build_session_handoff_md(
+    batch_id: str,
+    problem_id: str,
+    product: str,
+    date_str: str,
+    run_id: str,
+    phase2: dict,
+    phase5: dict,
+    phase6: dict,
+) -> str:
+    gaps = phase6.get("gaps", [])
+    open_items = "\n".join(
+        f"- [{g.get('gap_type','gap')}] {g.get('description', g.get('area', g.get('title','')))}".strip()
+        for g in gaps[:10]
+    ) or "- None identified"
+    actions = phase5.get("corrective_actions", [])
+    action_lines = "\n".join(
+        f"- [{a.get('type','fix')}] {a.get('description','')} (owner: {a.get('owner','')})"
+        for a in actions[:10]
+    ) or "- None identified"
+    return "\n".join([
+        f"# Session Handoff — Problem {problem_id}",
+        f"",
+        f"**Date:** {date_str}  ",
+        f"**Run ID:** {run_id}  ",
+        f"**Batch:** {batch_id}  ",
+        f"**Product:** {product}  ",
+        f"",
+        f"## Classification",
+        f"- Category: **{phase2.get('normalized_category','—')}**",
+        f"- Risk Tier: **{phase2.get('risk_tier','—')}**",
+        f"- Recurrence: **{phase2.get('recurrence_type','—')}**",
+        f"",
+        f"## Root Cause",
+        phase5.get("root_cause_statement", "Pending SME review."),
+        f"",
+        f"## Next Best Step",
+        f"Problem Coordinator to review RCA draft, assign resolution owner, and schedule review meeting.",
+        f"",
+        f"## Open Items / Gaps",
+        open_items,
+        f"",
+        f"## Corrective Actions",
+        action_lines,
+        f"",
+        f"---",
+        f"_Generated by LLMWiki PM Harness v1.2 · Status: DRAFT_",
+    ])
 
 
 # ════════════════════════════════════════════════════════════════════════════

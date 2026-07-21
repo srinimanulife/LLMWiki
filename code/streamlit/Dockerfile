@@ -3,6 +3,9 @@ FROM llmwiki-streamlit-base:flat AS base
 
 WORKDIR /app
 
+# Install nginx for reverse-proxy (routes /phoenix → 6006, /agents → 4173, / → 8502)
+RUN apt-get update -qq && apt-get install -y --no-install-recommends nginx && rm -rf /var/lib/apt/lists/*
+
 # Overlay updated Python source — no pip needed
 COPY streamlit/app.py .
 COPY streamlit/pages/ pages/
@@ -21,12 +24,13 @@ ENV PYTHONPATH=/app/lambda_common
 COPY registries/ registries/
 COPY config/llm_config.hocon config/llm_config.hocon
 
+# Nginx proxy config and entrypoint
+COPY streamlit/nginx-proxy.conf /app/nginx-proxy.conf
+COPY streamlit/entrypoint.sh    /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 8501
 
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
-ENTRYPOINT ["streamlit", "run", "app.py", \
-    "--server.port=8501", \
-    "--server.address=0.0.0.0", \
-    "--server.headless=true", \
-    "--browser.gatherUsageStats=false"]
+ENTRYPOINT ["/app/entrypoint.sh"]

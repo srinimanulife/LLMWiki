@@ -12,6 +12,7 @@ import re
 import sys
 import uuid
 import boto3
+import time
 from datetime import datetime, timezone
 
 # governance module bundled alongside handler.py in the Lambda zip
@@ -22,6 +23,39 @@ try:
 except ImportError:
     _GOVERNANCE = False
     print("WARN: governance module not found — cost tracking/caching disabled")
+
+# ── Tracing — DynamoDB-backed trace store ─────────────────────────────────────
+# Lambda is not in VPC so cannot reach the Phoenix ECS sidecar directly.
+# Traces are written to llmwiki-log (log_date prefix "traces#llmwiki-query#<date>")
+# using the same governance fallback pattern already in use for cost tracking.
+# The Streamlit traces page reads them from DynamoDB.
+_TRACES_TABLE = os.environ.get("TRACES_TABLE", os.environ.get("DYNAMODB_LOG", "llmwiki-log"))
+_TRACES_PROJECT = "llmwiki-query"
+
+
+def _iso_now() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
+
+
+def _write_trace(trace_id: str, span_id: str, name: str, start_iso: str, end_iso: str,
+                 attributes: dict, status: str = "OK") -> None:
+    """Write one trace span to DynamoDB. Fire-and-forget; never raises."""
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        table = dynamodb.Table(_TRACES_TABLE)
+        table.put_item(Item={
+            "log_date":     f"traces#{_TRACES_PROJECT}#{now[:10]}",
+            "timestamp_id": f"{now}#{span_id}",
+            "trace_id":     trace_id,
+            "span_id":      span_id,
+            "span_name":    name,
+            "start_time":   start_iso,
+            "end_time":     end_iso,
+            "status_code":  status,
+            "attributes":   json.dumps(attributes, default=str),
+        })
+    except Exception as exc:
+        print(f"TRACE: DynamoDB write failed (non-fatal): {exc}")
 
 s3 = boto3.client("s3")
 bedrock = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_REGION", "us-east-1"))
@@ -112,11 +146,19 @@ def lambda_handler(event, context):
 def answer_question(question: str, override_bucket: str = None, override_kb_id: str = None,
                     caller: str = "streamlit") -> dict:
     """Retrieve relevant wiki pages and synthesize a cited answer."""
+    # ── Trace bookkeeping ──────────────────────────────────────────
+    trace_id   = uuid.uuid4().hex
+    span_id    = uuid.uuid4().hex[:16]
+    span_start = _iso_now()
+    _t0        = time.monotonic()
+
     bucket = override_bucket or WIKI_BUCKET
 
     # "none" means explicit S3 full-text search (no KB), e.g. PM domain
     if override_kb_id == "none":
-        return s3_fulltext_answer(question, bucket)
+        result = s3_fulltext_answer(question, bucket)
+        _emit_query_span(trace_id, span_id, span_start, question, result, caller)
+        return result
 
     kb_id = override_kb_id or get_kb_id()
 
@@ -126,10 +168,14 @@ def answer_question(question: str, override_bucket: str = None, override_kb_id: 
         if cached:
             record_usage(MODEL_ID, 0, 0, caller=caller, operation="query", cache_hit=True)
             cached["cache_hit"] = True
+            _emit_query_span(trace_id, span_id, span_start, question, cached, caller,
+                             extra={"llmwiki.cache_hit": True})
             return cached
 
     if not kb_id:
-        return fallback_answer(question)
+        result = fallback_answer(question)
+        _emit_query_span(trace_id, span_id, span_start, question, result, caller)
+        return result
 
     # Retrieve from Knowledge Base
     try:
@@ -146,16 +192,21 @@ def answer_question(question: str, override_bucket: str = None, override_kb_id: 
         results = retrieve_response.get("retrievalResults", [])
     except Exception as e:
         print(f"KB retrieval failed: {e}. Falling back.")
-        return fallback_answer(question)
+        result = fallback_answer(question)
+        _emit_query_span(trace_id, span_id, span_start, question, result, caller,
+                         extra={"llmwiki.retrieval_error": str(e)})
+        return result
 
     if not results:
         gaps_identified = identify_and_record_gaps(question, "")
-        return {
+        result = {
             "answer": "The wiki does not yet have information about this topic. Try ingesting relevant documents first.",
             "sources": [],
             "confidence": "low",
             "gaps_identified": gaps_identified,
         }
+        _emit_query_span(trace_id, span_id, span_start, question, result, caller)
+        return result
 
     # Build context from retrieved passages
     context_parts = []
@@ -230,7 +281,38 @@ Provide a clear, concise answer with citations. Format key points as bullet poin
     if _GOVERNANCE and confidence in ("high", "medium"):
         cache_put(question, result, kb_id=kb_id or "")
 
+    # ── Emit trace span ────────────────────────────────────────────
+    _emit_query_span(trace_id, span_id, span_start, question, result, caller,
+                     extra={
+                         "llmwiki.retrieved_context": context[:4000],
+                         "llmwiki.kb_id": kb_id or "",
+                     })
     return result
+
+
+def _emit_query_span(trace_id: str, span_id: str, start_iso: str,
+                     question: str, result: dict, caller: str,
+                     extra: dict = None) -> None:
+    """Write one trace span to DynamoDB (fire-and-forget)."""
+    attrs = {
+        "input.value":            question,
+        "output.value":           result.get("answer", "")[:2000],
+        "llmwiki.confidence":     result.get("confidence", ""),
+        "llmwiki.citation_count": len(result.get("sources", [])),
+        "llmwiki.caller":         caller,
+        "llmwiki.domain":         "query",
+        "llm.model_name":         MODEL_ID,
+        "openinference.span.kind": "CHAIN",
+    }
+    if extra:
+        attrs.update(extra)
+    _write_trace(
+        trace_id=trace_id, span_id=span_id,
+        name="llmwiki.query",
+        start_iso=start_iso, end_iso=_iso_now(),
+        attributes=attrs,
+        status="OK",
+    )
 
 
 def s3_fulltext_answer(question: str, bucket: str) -> dict:
