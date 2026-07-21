@@ -196,7 +196,7 @@ Each week entry contains everything you need to invoke `/linkedin-post` and publ
 ### ✅ Week 1 — The Problem (PUBLISHED)
 **Format:** Post + Image
 **Status:** Published 2026-07-21
-**File:** `llmwiki_linkedin_post_001.png`
+**File:** `linkedin/linkedin_w1_the_problem.png`
 **Topic:** 25 years of knowledge walking out the door — LLMWiki as the fix
 **Post 001** in the Proven Post Library of `linkedin-post.md`
 
@@ -732,15 +732,16 @@ Same dark LLMWiki series style. Professional."
 
 ### Image naming convention
 
-Every image saved to the LLMWiki folder follows this pattern:
+All images and PDFs live in the `linkedin/` directory at the project root.
+
 ```
-linkedin_w{N}_{slug}.png        e.g. linkedin_w2_aws_architecture.png
-linkedin_w{N}_{slug}_v2.png     e.g. linkedin_w5_sly_data_v2.png  (if regenerated)
-linkedin_w{N}_carousel.pdf      e.g. linkedin_w2_carousel.pdf
+linkedin/linkedin_w{N}_{slug}.png        e.g. linkedin/linkedin_w2_aws_architecture.png
+linkedin/linkedin_w{N}_{slug}_v2.png     e.g. linkedin/linkedin_w5_sly_data_v2.png  (if regenerated)
+linkedin/linkedin_w{N}_carousel.pdf      e.g. linkedin/linkedin_w2_carousel.pdf
 ```
 
-The `/linkedin-post` skill auto-saves using the topic slug. For carousels, name the PDF
-manually after generating.
+The `/linkedin-post` skill auto-saves using the topic slug. For carousels, save the PDF
+to `linkedin/` manually after generating.
 
 ---
 
@@ -867,18 +868,18 @@ The Premium profile viewer list comes from here — cross-reference with your IC
 
 | # | Sprint Date | Title | Format | Image File | Impressions | Reactions | Comments | DMs | Profile Views | LinkedIn URL | Top commenter title |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| W1 | Mon Jul 21 | The Problem — 25 years of knowledge walking out | Post + Image | `llmwiki_linkedin_post_001.png` | — | — | — | — | — | — | — |
-| W2 | Wed Jul 23 | The AWS Architecture | Carousel PDF | `linkedin_w2_carousel.pdf` | — | — | — | — | — | — | — |
-| W3 | Fri Jul 25 | Neuro-SAN & AAOSA Protocol | Post + Image | `linkedin_w3_neuro_san.png` | — | — | — | — | — | — | — |
-| W4 | Mon Jul 28 | UC1 Sales-to-Service Live Run | Post + Image | `linkedin_w4_uc1_run.png` | — | — | — | — | — | — | — |
-| W5 | Wed Jul 30 | Sly Data: Prompt Injection Defence ⭐ | Post + Image | `linkedin_w5_sly_data.png` | — | — | — | — | — | — | — |
-| W6 | Fri Aug 1 | Data Poisoning in RAG Systems ⭐ | Post + Image | `linkedin_w6_data_poisoning.png` | — | — | — | — | — | — | — |
-| W7 | Mon Aug 4 | Gap Detection: I Don't Know as a Feature | Post + Image | `linkedin_w7_gap_detection.png` | — | — | — | — | — | — | — |
-| W8 | Wed Aug 6 | Fusion Harness: AI Building AI | Post + Image | `linkedin_w8_fusion_harness.png` | — | — | — | — | — | — | — |
-| W9 | Fri Aug 8 | Governance: The Control No Agent Can Override | Post + Image | `linkedin_w9_governance.png` | — | — | — | — | — | — | — |
-| W10 | Mon Aug 11 | Evaluation: How You Know the Agent Is Right | Post + Image | `linkedin_w10_evaluation.png` | — | — | — | — | — | — | — |
-| W11 | Wed Aug 13 | One Platform. Seven Industries. ⭐ | Carousel PDF | `linkedin_w11_carousel.pdf` | — | — | — | — | — | — | — |
-| W12 | Fri Aug 15 | The Compounding Knowledge Moat — Finale | Post + Image | `linkedin_w12_moat.png` | — | — | — | — | — | — | — |
+| W1 | Mon Jul 21 | The Problem — 25 years of knowledge walking out | Post + Image | `linkedin/linkedin_w1_the_problem.png` ✅ | — | — | — | — | — | — | — |
+| W2 | Wed Jul 23 | The AWS Architecture | Carousel PDF | `linkedin/linkedin_w2_aws_architecture.png` ✅ cover + `linkedin/linkedin_w2_carousel.pdf` 🔶 | — | — | — | — | — | — | — |
+| W3 | Fri Jul 25 | Neuro-SAN & AAOSA Protocol | Post + Image | `linkedin/linkedin_w3_neuro_san.png` ✅ | — | — | — | — | — | — | — |
+| W4 | Mon Jul 28 | UC1 Sales-to-Service Live Run | Post + Image | `linkedin/linkedin_w4_uc1_run.png` ✅ | — | — | — | — | — | — | — |
+| W5 | Wed Jul 30 | Sly Data: Prompt Injection Defence ⭐ | Post + Image | `linkedin/linkedin_w5_sly_data.png` ✅ | — | — | — | — | — | — | — |
+| W6 | Fri Aug 1 | Data Poisoning in RAG Systems ⭐ | Post + Image | `linkedin/linkedin_w6_data_poisoning.png` ✅ | — | — | — | — | — | — | — |
+| W7 | Mon Aug 4 | Gap Detection: I Don't Know as a Feature | Post + Image | `linkedin/linkedin_w7_gap_detection.png` ✅ | — | — | — | — | — | — | — |
+| W8 | Wed Aug 6 | Fusion Harness: AI Building AI | Post + Image | `linkedin/linkedin_w8_fusion_harness.png` ✅ | — | — | — | — | — | — | — |
+| W9 | Fri Aug 8 | Governance: The Control No Agent Can Override | Post + Image | `linkedin/linkedin_w9_governance.png` ✅ | — | — | — | — | — | — | — |
+| W10 | Mon Aug 11 | Evaluation: How You Know the Agent Is Right | Post + Image | `linkedin/linkedin_w10_evaluation.png` ✅ | — | — | — | — | — | — | — |
+| W11 | Wed Aug 13 | One Platform. Seven Industries. ⭐ | Carousel PDF | `linkedin/linkedin_w11_seven_industries.png` ✅ cover + `linkedin/linkedin_w11_carousel.pdf` 🔶 | — | — | — | — | — | — | — |
+| W12 | Fri Aug 15 | The Compounding Knowledge Moat — Finale | Post + Image | `linkedin/linkedin_w12_moat.png` ✅ | — | — | — | — | — | — | — |
 
 **Cancel Premium: Aug 18 (Day 28). Before cancelling:**
 - Export profile viewer list from all 12 posts
