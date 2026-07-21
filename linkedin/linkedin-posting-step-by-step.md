@@ -1,13 +1,14 @@
 # LinkedIn Posting — Step-by-Step Field Guide
-### Posts · Articles · SEO · Algorithm · First-Timer Gotchas · Weekly Rhythm
+### Posts · Articles · SEO · Algorithm · MCP Automation · AWS Bedrock · First-Timer Gotchas · Weekly Rhythm
 **Author:** Srinivasan Sethuraman · LLMWiki Series
 
 ---
 
 > **You have already done the hardest part.** You built something real, you have the content
 > written, and you have 12 professional images ready. This guide turns that into a publishing
-> habit. Follow it once and it becomes muscle memory. You will look back at Week 12 and
-> wonder why you waited.
+> habit — and with the MCP + Bedrock setup in Part 0, Claude can assist you directly
+> inside Claude Code for every weekly post. Follow it once and it becomes muscle memory.
+> You will look back at Week 12 and wonder why you waited.
 
 ---
 
@@ -15,6 +16,7 @@
 
 | Situation | Go to |
 |---|---|
+| **Set up Claude Code + MCP to assist with posting** | **Part 0** ← start here |
 | Setting up LinkedIn for the first time | Part 1 |
 | Publishing your first post (Post 001 today) | Part 2 |
 | Understanding why things are done this way | Part 3 — Algorithm |
@@ -23,6 +25,291 @@
 | Weekly rhythm for the 12-week sprint | Part 6 |
 | Gotchas and common first-timer mistakes | Part 7 |
 | Quick reference checklists | Part 8 |
+
+---
+
+## Part 0 — MCP + AWS Bedrock: Let Claude Code Assist Every Weekly Post
+
+You already have Claude Code running on **AWS Bedrock** (`CLAUDE_CODE_USE_BEDROCK=true`,
+model `us.anthropic.claude-3-7-sonnet-20250219-v1:0`). That means Claude's intelligence
+is already inside your terminal — connected to your AWS account, your files, your images.
+
+Two MCP servers turn this from "Claude answers questions" into
+**"Claude reads your files, drafts the post, and opens LinkedIn ready for you to paste"**:
+
+| MCP Server | What it does for LinkedIn posting |
+|---|---|
+| **Filesystem MCP** | Claude can read `linkedin/` directly — the post text, images, multiweek plan — without you copy-pasting anything |
+| **Playwright MCP** | Claude can drive a real browser: open LinkedIn, navigate to the post composer, paste text, attach the image — you just review and click Post |
+
+Both are free, open-source, and run locally. Nothing leaves your machine.
+
+---
+
+### Step 0.1 — Install the Filesystem MCP (5 minutes)
+
+The Filesystem MCP lets Claude Code read and write files in specified directories.
+For LinkedIn posting, this means Claude can read `linkedin/llmwiki-linkedin-multiweek-post.md`,
+pull out the week's post text and image path, and hand them to you — or to Playwright.
+
+**Install:**
+```bash
+npm install -g @modelcontextprotocol/server-filesystem
+```
+
+**Register with Claude Code:**
+```bash
+claude mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem \
+  "/mnt/c/Users/859600/OneDrive - Cognizant/AWSLab/LLMWiki/linkedin"
+```
+
+This gives Claude read/write access to only the `linkedin/` directory — nothing else.
+
+**Verify it registered:**
+```bash
+claude mcp list
+# Should show: filesystem  npx -y @modelcontextprotocol/server-filesystem ...
+```
+
+**What you can now say to Claude Code:**
+
+```
+Read linkedin/llmwiki-linkedin-multiweek-post.md and give me the ready-to-paste
+post text and image filename for Week 3 (Fri Jul 25).
+```
+
+Claude reads the file directly and returns:
+- The exact post text, formatted, ready to paste
+- The filename: `linkedin_w3_neuro_san.png`
+- The hashtags
+- The first-comment text for posting immediately after
+
+---
+
+### Step 0.2 — Install the Playwright MCP (10 minutes)
+
+Playwright MCP lets Claude Code control a real browser. For LinkedIn posting:
+Claude opens Chrome, navigates to LinkedIn, clicks "Start a post", pastes your text,
+attaches the image, and waits for you to review before clicking Post.
+
+> ⚠️ **You remain in control.** Claude never clicks "Post" on its own — it stops and
+> asks you to review. The final Post click is always yours. This prevents accidental
+> publishing of draft content.
+
+**Install:**
+```bash
+npm install -g @playwright/mcp
+# Install browsers (only needed once — ~200MB):
+npx playwright install chromium
+```
+
+**Register with Claude Code:**
+```bash
+claude mcp add playwright -- npx @playwright/mcp --browser chromium
+```
+
+**Verify:**
+```bash
+claude mcp list
+# Should show both: filesystem and playwright
+```
+
+**What you can now say to Claude Code:**
+
+```
+/linkedin-post week3
+```
+
+Or more explicitly:
+
+```
+Open LinkedIn in a browser and prepare the Week 3 post for me.
+Read the post text from linkedin/llmwiki-linkedin-multiweek-post.md,
+navigate to linkedin.com, open the post composer, paste the text,
+and attach linkedin/linkedin_w3_neuro_san.png. Stop before clicking Post.
+```
+
+Claude will:
+1. Read the multiweek plan file (Filesystem MCP)
+2. Open `linkedin.com` in Chromium (Playwright MCP)
+3. Log in (uses your saved browser session — see Step 0.3)
+4. Click "Start a post"
+5. Paste the post text
+6. Attach the correct week's image
+7. **Stop and show you a screenshot** — you review, then click Post yourself
+
+---
+
+### Step 0.3 — Log Into LinkedIn in the Playwright Browser (Once)
+
+Playwright uses its own browser profile. You need to log in once so it remembers your session.
+
+```bash
+# Launch Playwright browser manually to log in:
+npx playwright open --browser chromium https://www.linkedin.com
+```
+
+1. The Chromium browser opens
+2. Log into LinkedIn normally (your usual credentials)
+3. Complete any 2FA if prompted
+4. Close the browser — Playwright saves the session
+
+After this, Claude can open LinkedIn without logging in again (until the session expires,
+usually ~30 days).
+
+> ⚠️ **If LinkedIn asks for 2FA mid-session:** Claude will pause and show you the 2FA
+> screen. Complete it manually, then tell Claude to continue.
+
+---
+
+### Step 0.4 — Verify the Full Setup
+
+Run this in your Claude Code session to confirm everything works:
+
+```
+Can you read linkedin/llmwiki-linkedin-multiweek-post.md and tell me 
+the post title, image filename, and hashtags for Week 4 (Mon Jul 28)?
+```
+
+Expected response: Claude reads the file and returns the exact Week 4 details
+without you having to open the file yourself.
+
+Then:
+```
+Open linkedin.com in the browser and click "Start a post" — just stop there,
+don't fill anything in yet.
+```
+
+Expected: Chromium opens, LinkedIn loads, post composer appears. If both work —
+your MCP stack is fully operational.
+
+---
+
+### Step 0.5 — The Weekly Posting Command (Once Everything Is Set Up)
+
+**Every Monday/Wednesday/Friday morning, you run one command:**
+
+```
+Prepare and pre-fill my LinkedIn post for today. 
+Read linkedin/llmwiki-linkedin-multiweek-post.md, find the post scheduled for today,
+open LinkedIn, fill the composer with the post text and image, 
+then stop for my review before posting.
+```
+
+Claude will:
+1. Check today's date against the sprint schedule
+2. Pull the correct post text, image, hashtags, and first-comment text
+3. Open LinkedIn → composer → paste everything → attach image
+4. Display a preview summary: hook, word count, hashtags, image filename
+5. Wait for you to say "post it" or "tweak the hook"
+
+**If you want to adjust the hook before posting:**
+```
+Change the hook to: "Most enterprises lose 10,000 hours a year to this single problem."
+Then re-fill the composer.
+```
+
+Claude rewrites the hook, re-pastes in the browser, you review again.
+
+**After posting:**
+```
+Post is live. Post the first comment now:
+"Full Neuro-SAN architecture breakdown coming Monday. 
+What questions do you have about multi-agent orchestration?"
+```
+
+Claude pastes that into the comment field. You click "Post comment."
+
+---
+
+### Step 0.6 — AWS Bedrock Connection: What You Already Have
+
+Your Claude Code is already on Bedrock — confirmed from `~/.claude/settings.json`:
+
+```json
+"CLAUDE_CODE_USE_BEDROCK": "true",
+"ANTHROPIC_MODEL": "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+```
+
+This means:
+- **No Anthropic API key needed** — Claude authenticates via your AWS credentials
+- **Billing goes through AWS** — same account (392568849512) as the rest of LLMWiki
+- **Model is Claude 3.7 Sonnet** — same generation powering your Neuro-SAN agents
+
+The Bedrock connection is already working — you are using it right now.
+
+**What the Bedrock connection adds for LinkedIn posting specifically:**
+
+| Capability | How it helps |
+|---|---|
+| Claude reads `linkedin/` files directly (via Filesystem MCP) | No copy-pasting — Claude sees the source of truth |
+| Claude can call `invoke_model` on Bedrock Claude 3.7 | Same intelligence as claude.ai, inside your terminal |
+| AWS IAM governs access | The MCP filesystem access is controlled by your IAM role — enterprise-grade |
+| Cost on AWS invoice | Everything in one bill — no separate Anthropic subscription |
+
+**Optionally — use Bedrock directly for post generation (without the proxy):**
+
+If you want to call Bedrock's Claude directly from a script (for automation or testing):
+
+```python
+import boto3, json
+
+bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
+
+response = bedrock.invoke_model(
+    modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    body=json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 1000,
+        "messages": [{
+            "role": "user",
+            "content": "Write a LinkedIn hook for a post about Sly Data — structural prompt injection defence in multi-agent AI systems. 2 lines, specific, practitioner voice."
+        }]
+    }),
+    contentType="application/json",
+    accept="application/json"
+)
+
+result = json.loads(response["body"].read())
+print(result["content"][0]["text"])
+```
+
+Run via: `python3 scripts/bedrock_linkedin_hook.py`
+
+This is useful for generating hook variations quickly before deciding which angle to use.
+
+---
+
+### Step 0.7 — Optional: Create a `/linkedin-week` Skill
+
+Add this to `.claude/commands/linkedin-week.md` to make weekly posting a one-word command:
+
+```markdown
+# /linkedin-week — Prepare This Week's LinkedIn Post
+
+Read linkedin/llmwiki-linkedin-multiweek-post.md.
+Find the post entry for the nearest upcoming sprint date.
+Return:
+1. The full post text, formatted and ready to paste
+2. The image filename from linkedin/
+3. The hashtags (last line)
+4. The first-comment text to post immediately after publishing
+5. The teaser line for the next week
+
+Then ask: "Open LinkedIn and pre-fill the composer? (yes/no)"
+If yes: use Playwright MCP to open linkedin.com, navigate to Start a post,
+paste the text, attach the image, and stop for review.
+```
+
+Save it, then use it every week:
+```
+/linkedin-week
+```
+
+That single command reads your plan, finds today's post, and pre-fills LinkedIn.
+The entire weekly prep becomes one command plus a review click.
+
+---
 
 ---
 
