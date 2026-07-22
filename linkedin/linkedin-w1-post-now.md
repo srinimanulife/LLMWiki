@@ -468,7 +468,7 @@ Drop it below — I'll answer every one.
 1. Click on the timestamp of your post (e.g., "just now" or "1m")
 2. This opens the post on its own page — copy the URL from the browser
 3. Message each of your 3 seeds:
-   > *"Just posted! Here's the link: [URL] — would love your comment when you get a chance."*
+   > *"Just posted! Here's the link: [https://www.linkedin.com/posts/srinivasan-sethuraman-b942173_llmwiki-awsbedrock-enterpriseai-share-7485444461800386560-S59w/?utm_source=share&utm_medium=member_desktop&rcm=ACoAAACQzuABKJsTqfeBYfA1SZn0QPnGUv1JXPQ] — would love your comment when you get a chance."*
 
 ---
 
