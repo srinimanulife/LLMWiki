@@ -74,6 +74,9 @@ services:
       # Phoenix — internal connection for REST API calls, browser URL for iframe
       - PHOENIX_ENDPOINT=http://phoenix:6006
       - PHOENIX_BROWSER_URL=http://localhost:6006
+      # UC-BC Benefit Config harness
+      - BC_HARNESS_FUNCTION=${BC_HARNESS_FUNCTION:-llmwiki-harness-uc-bc}
+      - BC_RUNS_TABLE=${BC_RUNS_TABLE:-llmwiki-bc-runs}
     volumes:
       - ~/.aws:/root/.aws:ro
     depends_on:

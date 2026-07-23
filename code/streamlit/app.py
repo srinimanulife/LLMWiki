@@ -50,6 +50,7 @@ with st.sidebar:
     st.page_link("pages/knowledge_hub.py",  label="📖 Knowledge Hub",  icon="📖")
     st.page_link("pages/lambda_harness.py", label="⚡ Lambda Harness", icon="⚡")
     st.page_link("pages/neuro_harness.py",  label="🧠 Neuro Harness",  icon="🧠")
+    st.page_link("pages/benefit_config.py", label="🏥 Benefit Config",  icon="🏥")
     st.page_link("pages/platform.py",       label="⚙️ Platform",       icon="⚙️")
 
     st.divider()
@@ -78,6 +79,11 @@ with c2:
         st.markdown("### 🧠 Neuro Harness")
         st.caption("Neuro SAN AAOSA multi-agent chat with live OTel traces")
         st.page_link("pages/neuro_harness.py", label="Open Neuro Harness →", icon="🧠")
+
+    with st.container(border=True):
+        st.markdown("### 🏥 Benefit Config")
+        st.caption("UC-BC · Compare two EOC plan years · AI-generated structured diff")
+        st.page_link("pages/benefit_config.py", label="Open Benefit Config →", icon="🏥")
 
     with st.container(border=True):
         st.markdown("### ⚙️ Platform")
