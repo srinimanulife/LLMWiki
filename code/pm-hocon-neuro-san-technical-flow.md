@@ -662,6 +662,366 @@ on it.
 
 ---
 
+## How the Lambda Gets Called — The "Magic" Explained
+
+> **Common misconception:** The Python coded tool files are NOT auto-generated from
+> the HOCON file. They are manually written. HOCON and Python are two separate
+> artifacts that you wire together with one single field: `"class"`.
+
+Here is the complete chain from HOCON instruction to Lambda execution:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  HOCON file  (uc_pm_problem_management.hocon)                       │
+│                                                                      │
+│  {                                                                   │
+│    "name":  "WikiQuery",              ← LLM uses this name only     │
+│    "class": "coded_tools.llmwiki      ← THIS is the binding         │
+│              .wiki_query_tool         ← Python module path          │
+│              .WikiQueryTool"          ← Python class name           │
+│  }                                                                   │
+└──────────────────────┬──────────────────────────────────────────────┘
+                       │ Neuro-SAN imports the class at startup
+                       ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Python CodedTool  (wiki_query_tool.py)                             │
+│                                                                      │
+│  class WikiQueryTool(CodedTool, LLMWikiBaseTool):                   │
+│      FUNCTION = os.environ.get(                                     │
+│          "SK02_FUNCTION",              ← env var name               │
+│          "llmwiki-skill-wiki-query"    ← fallback Lambda name       │
+│      )                                                               │
+│                                                                      │
+│      async def async_invoke(self, args, sly_data):                  │
+│          payload = { ... }                                           │
+│          return self._invoke_skill(self.FUNCTION, payload)  ←──┐   │
+└────────────────────────────────────────────────────────────────┼───┘
+                                                                 │
+                       inherited from LLMWikiBaseTool            │
+                       ▼                                         │
+┌─────────────────────────────────────────────────────────────────────┐
+│  LLMWikiBaseTool._invoke_skill(function_name, payload)              │
+│                                                                      │
+│  boto3.client("lambda").invoke(                                     │
+│      FunctionName = "llmwiki-skill-wiki-query",  ← resolved here   │
+│      InvocationType = "RequestResponse",                            │
+│      Payload = json.dumps(payload).encode()                         │
+│  )                                                                   │
+└──────────────────────┬──────────────────────────────────────────────┘
+                       │
+                       ▼
+            AWS Lambda: llmwiki-skill-wiki-query
+```
+
+### Why the Lambda name is never in the HOCON
+
+The HOCON file is plain text that the LLM reads. If the Lambda name were in the
+HOCON, the LLM would see it — and in principle could reason about it, hallucinate
+variations of it, or expose it in a response. By keeping the Lambda name inside
+the Python class (as `FUNCTION = os.environ.get(...)`), the Lambda name is
+completely hidden from the LLM. The LLM only ever sees `"name": "WikiQuery"`.
+
+### The three-key lookup the runtime does at startup
+
+When `ns run` starts, Neuro-SAN:
+
+1. Reads the HOCON — finds `"class": "coded_tools.llmwiki.wiki_query_tool.WikiQueryTool"`
+2. Does a Python import: `from coded_tools.llmwiki.wiki_query_tool import WikiQueryTool`
+3. Instantiates the class — at this point `WikiQueryTool.FUNCTION` reads the env var
+4. Registers the instance under the HOCON `"name"` so the LLM can call it by that name
+
+If step 2 fails (wrong path, typo in `"class"`) — **Neuro-SAN crashes at startup**, not at
+runtime when the tool is first called. This is useful: you know immediately if the binding
+is broken, before any user sends a message.
+
+---
+
+## Adding a New Step Tomorrow — Exact Procedure
+
+Say you need to add a new tool `SLABreachDetector` that calls a new Lambda
+`llmwiki-skill-sla-breach`. Here is the exact sequence of changes required.
+
+### Step 1 — Deploy (or confirm) the Lambda first
+
+Before touching any HOCON or Python, the Lambda must exist and be callable.
+Test it manually:
+
+```bash
+aws lambda invoke \
+  --function-name llmwiki-skill-sla-breach \
+  --payload '{"skill":"SLABreachSkill","inputs":{"problem_id":"PRB0042","customer_id":"QNXT"}}' \
+  --cli-binary-format raw-in-base64-out \
+  response.json && cat response.json
+```
+
+Confirm the response shape. You need to know the exact keys the Lambda returns
+before writing the Python tool that reads them.
+
+---
+
+### Step 2 — Write the Python CodedTool
+
+Create `code/neuro_san/coded_tools/llmwiki/sla_breach_tool.py`:
+
+```python
+import os
+from neuronsai.coded_tool import CodedTool
+from coded_tools.llmwiki.llmwiki_base_tool import LLMWikiBaseTool
+
+class SLABreachDetectorTool(CodedTool, LLMWikiBaseTool):
+
+    FUNCTION = os.environ.get("SK07_FUNCTION", "llmwiki-skill-sla-breach")
+
+    async def async_invoke(self, args: dict, sly_data: dict) -> dict:
+        ctx = self._extract_sly(sly_data)
+
+        # Read args using the EXACT same field names as in HOCON "parameters" schema
+        problem_id   = args.get("problem_id", "")
+        severity     = args.get("severity", "")
+        breach_window = args.get("breach_window_hours", 4)
+
+        payload = {
+            "skill":      "SLABreachSkill",
+            "version":    "1.0",
+            "invoked_by": "pm-neuro-san-agent",
+            "inputs": {
+                "problem_id":          problem_id,
+                "severity":            severity,
+                "breach_window_hours": breach_window,
+                "customer_id":         ctx["customer_id"],  # always from sly_data
+            }
+        }
+
+        result = self._invoke_skill(self.FUNCTION, payload)
+
+        return {
+            "skill_id":       "SK-07",
+            "breached":       result.get("breached", False),
+            "breach_time_utc": result.get("breach_time_utc", ""),
+            "sla_target_hrs":  result.get("sla_target_hrs", 0),
+            "latency_ms":      result.get("latency_ms", 0),
+        }
+```
+
+---
+
+### Step 3 — Register the tool in the HOCON file
+
+Open `code/registries/llmwiki/uc_pm_problem_management.hocon`.
+
+Inside the `"tools"` array of `UCPMProblemManagementAgent`, add:
+
+```hocon
+{
+    "name": "SLABreachDetector",
+    "function": ${aaosa_call} {
+        "description": """
+            Checks whether the current problem has breached or is about to breach
+            its SLA commitment. Call this after ProblemClassifier whenever severity
+            is P1 or P2. Returns: breached (bool), breach_time_utc, sla_target_hrs.
+        """,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "problem_id": {
+                    "type": "string",
+                    "description": "The problem record ID, e.g. PRB0042"
+                },
+                "severity": {
+                    "type": "string",
+                    "description": "Severity level: P1, P2, P3, P4"
+                },
+                "breach_window_hours": {
+                    "type": "number",
+                    "description": "Hours from now within which a breach is considered imminent"
+                }
+            },
+            "required": ["problem_id", "severity"]
+        }
+    },
+    "class": "coded_tools.llmwiki.sla_breach_tool.SLABreachDetectorTool"
+}
+```
+
+---
+
+### Step 4 — Update the FrontMan instructions
+
+In the same HOCON file, find the `UCPMProblemManagementAgent` `"instructions"` block
+and add the new step at the right position. Example — inserting after STEP 1:
+
+```
+STEP 1b  If severity is P1 or P2, immediately call SLABreachDetector with
+          the problem_id and severity from Step 1.
+          IF breached = true: prepend a BREACH WARNING to all outputs.
+          IF breach_time_utc is within 2 hours: escalate to high risk tier.
+```
+
+The instruction text is for the LLM only — it has no technical effect on Python.
+Its purpose is to tell the LLM **when** to call the tool and **what to do with the result**.
+
+---
+
+### Step 5 — Set the environment variable
+
+Add to your `.env` or export before `ns run`:
+
+```bash
+export SK07_FUNCTION=llmwiki-skill-sla-breach
+```
+
+Without this, the Python tool falls back to the hardcoded default
+(`"llmwiki-skill-sla-breach"`) — which is fine as long as the default name
+matches the actual deployed Lambda. Setting the env var explicitly is safer
+because it decouples the Lambda name from the Python source code.
+
+---
+
+## Cautions — Where Things Go Wrong
+
+These are the exact failure modes that are easy to miss:
+
+### Caution 1 — Parameter name mismatch (most common mistake)
+
+The HOCON `"parameters"` schema tells the LLM what field names to pass.
+The Python `async_invoke` reads those field names from `args`. If they differ,
+the tool runs silently with an empty string — no error, wrong result.
+
+```
+HOCON says:          "problem_record_id"   ← LLM passes this key
+Python reads:        args.get("problem_id") ← reads different key → ""
+Lambda receives:     "problem_id": ""       ← wrong
+```
+
+**Rule:** After writing the Python tool, read back the HOCON parameter names
+and verify every `args.get("...")` in Python matches exactly — same spelling,
+same underscore positions, same case.
+
+---
+
+### Caution 2 — Wrong `"class"` path crashes startup
+
+The `"class"` field is a Python dotted import path relative to the `PYTHONPATH`
+that Neuro-SAN uses. One typo = `ModuleNotFoundError` at `ns run` startup.
+
+```
+"class": "coded_tools.llmwiki.sla_breachtool.SLABreachDetectorTool"
+                                    ↑ missing underscore
+```
+
+Neuro-SAN will refuse to start and print the import error. Fix the `"class"` string.
+The class name at the end is case-sensitive too.
+
+---
+
+### Caution 3 — `"name"` in HOCON has no technical effect
+
+The `"name"` field is what the LLM uses to refer to the tool in its reasoning.
+It has zero effect on which Python class is loaded. You can rename it freely
+without touching Python. Conversely, renaming the Python class or file requires
+updating `"class"` — renaming `"name"` does not.
+
+```
+"name":  "SLAChecker"          ← change this freely
+"class": "coded_tools.llmwiki  ← change this when you rename the file/class
+          .sla_breach_tool
+          .SLABreachDetectorTool"
+```
+
+---
+
+### Caution 4 — Lambda response format must match `_raw_invoke` unwrapping
+
+`LLMWikiBaseTool._raw_invoke()` expects the Lambda to return either:
+- A plain JSON dict: `{"breached": true, "breach_time_utc": "..."}`
+- Or an API Gateway-style envelope: `{"statusCode": 200, "body": "{\"breached\": true}"}`
+
+If the Lambda returns something else (e.g. a list, a string, or double-wrapped),
+`_raw_invoke` will either raise or return an unexpected structure, and `result.get(...)`
+in the Python tool will silently return `None` for every field.
+
+**Rule:** Test the Lambda directly with `aws lambda invoke` before writing the
+Python tool, and confirm the response can be parsed with `result.get("key")`.
+
+---
+
+### Caution 5 — `customer_id` must always come from `sly_data`
+
+Never read `customer_id` from `args` as the primary source. Always use:
+
+```python
+ctx = self._extract_sly(sly_data)
+customer_id = ctx["customer_id"] or args.get("customer_id", "")
+```
+
+`sly_data` takes priority. If the LLM hallucinates a `customer_id` in `args`,
+`sly_data` overrides it. This is the injection-protection mechanism. Removing
+this pattern breaks security isolation between tenants.
+
+---
+
+### Caution 6 — Missing env var silently uses the fallback Lambda name
+
+```python
+FUNCTION = os.environ.get("SK07_FUNCTION", "llmwiki-skill-sla-breach")
+```
+
+If `SK07_FUNCTION` is not set, Python calls `"llmwiki-skill-sla-breach"` literally.
+In production this is fine if the name matches. In staging where Lambda names have
+a `-staging` suffix, forgetting the env var means staging code calls production Lambdas.
+
+**Rule:** Always set the env var explicitly in every environment's configuration.
+Never rely on the fallback name in non-production environments.
+
+---
+
+### Caution 7 — Adding to HOCON without a Python file crashes at startup
+
+If the `"class"` path points to a file that doesn't exist yet, Neuro-SAN
+crashes immediately when `ns run` loads the manifest. It does not fail lazily
+at the time the tool is first called. You must have the Python file in place
+**before** running with the updated HOCON.
+
+**Rule:** Always write and test the Python tool first. Then add it to HOCON.
+Then update the FrontMan instructions. Never do it in reverse.
+
+---
+
+### Summary — The correct order of operations
+
+```
+1. Deploy and test the Lambda manually (aws lambda invoke)
+2. Write the Python CodedTool (.py file)
+   - FUNCTION env var
+   - async_invoke reads args with the SAME field names HOCON will declare
+   - customer_id from sly_data (always)
+   - payload["inputs"] keys match what the Lambda expects
+3. Add the tool to the HOCON "tools" array
+   - "class" matches the exact Python module.ClassName
+   - "parameters" schema field names match async_invoke's args.get() calls
+4. Add a STEP to FrontMan instructions
+   - Tell the LLM when to call it and what to do with the result
+5. Set the env var (SK_N_FUNCTION=lambda-name) in the run environment
+6. Start ns run — it crashes immediately if "class" is wrong (good: fail fast)
+7. Send a test message that triggers the new step
+8. Check the coded tool returns the expected dict to FrontMan
+```
+
+The three things that must stay in sync at all times:
+
+```
+HOCON "parameters" field names
+    ↕  must match exactly
+Python async_invoke args.get("field_name")
+    ↕  must match exactly
+Lambda payload["inputs"]["field_name"]
+```
+
+A mismatch anywhere in this chain produces no exception — just a silent empty value.
+That is the hardest class of bug in this system to diagnose because the run succeeds.
+
+---
+
 ## AAOSA Protocol — How the FrontMan Thinks
 
 AAOSA (Agent-to-Agent Orchestration with Sub-Agent Arbitration) is included via:
